@@ -2,11 +2,11 @@
 
 
 #include "Portal.h"
-
 #include <stdexcept>
 
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/ArrowComponent.h"
 
 #define PORTAL_COLLISION_PROFILE_NAME "Pawn_Hole"
 #define STANDARD_COLLISION_PROFILE_NAME "Pawn"
@@ -36,7 +36,8 @@ APortal::APortal()
 	MeshPortalHole->SetCollisionObjectType(ECollisionChannel::ECC_GameTraceChannel2);
 	//MeshPortalHole->SetVisibility(false);
 
-	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("Started"));
+	PortalEntranceDirection =
+		CreateDefaultSubobject<UArrowComponent>("PortalEntranceDirection");
 }
 
 // Called when the game starts or when spawned
@@ -73,6 +74,15 @@ void APortal::OnOverlapBegin(
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("OverlapBegin"));
+		GEngine->AddOnScreenDebugMessage(
+			-1, 5.f, FColor::Red,
+			TEXT("OtherActor:") + OtherActor->GetName());
+		GEngine->AddOnScreenDebugMessage(
+			-1, 5.f, FColor::Red,
+			TEXT("OverlappedComp:") + OverlappedComp->GetName());
+		GEngine->AddOnScreenDebugMessage(
+			-1, 5.f, FColor::Red,
+			TEXT("OtherComp:") + OtherComp->GetName());
 	}
 
 	OtherComp->SetCollisionProfileName(TEXT(PORTAL_COLLISION_PROFILE_NAME));

@@ -8,12 +8,15 @@
 
 class UStaticMeshComponent;
 class UCapsuleComponent;
+class UArrowComponent;
 
 UCLASS()
 class PORTALREVISITED_API APortal : public AActor
 {
 	GENERATED_BODY()
 
+
+public:
 	/**
 	 * 
 	 */
@@ -24,8 +27,15 @@ class PORTALREVISITED_API APortal : public AActor
 	 * If a dynamic mesh has overlapped this mask, then collision channel
 	 * will be changed to enter the portal ignoring static mesh behind.
 	 */
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, meta=(AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
 	TObjectPtr<UCapsuleComponent> PortalMask;
+
+	/**
+	 * The arrow defines the portal entrance normal, and it helps
+	 * the portal to be generated with correct normal.
+	 */
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
+	TObjectPtr<UArrowComponent> PortalEntranceDirection;
 	
 public:	
 	// Sets default values for this actor's properties
