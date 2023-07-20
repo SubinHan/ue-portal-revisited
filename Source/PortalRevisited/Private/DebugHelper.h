@@ -17,7 +17,7 @@ public:
 		);
 	}
 
-	static void PrintText(FString& Message)
+	static void PrintText(const FString& Message)
 	{
 		if (!GEngine)
 			return;
@@ -30,7 +30,7 @@ public:
 		);
 	}
 	
-	static void PrintVector(FVector& Vector)
+	static void PrintVector(const FVector& Vector)
 	{
 		if (!GEngine)
 			return;
@@ -50,5 +50,22 @@ public:
 			FColor::Red,
 			VectorText
 		);
+	}
+
+	static void DrawLine(
+		const FVector& Position,
+		const FVector& Direction)
+	{
+		if (!GEngine)
+			return;
+
+		constexpr float LINE_LENGTH = 500.f;
+
+		DrawDebugLine(GWorld,
+			Position,
+			Position + Direction * LINE_LENGTH,
+			FColor::Red,
+			false,
+			5.0f);
 	}
 };

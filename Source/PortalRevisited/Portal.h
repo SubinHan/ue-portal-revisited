@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
+#include "Engine/StaticMeshActor.h"
 #include "Portal.generated.h"
 
 class UStaticMeshComponent;
@@ -11,7 +11,7 @@ class UCapsuleComponent;
 class UArrowComponent;
 
 UCLASS()
-class PORTALREVISITED_API APortal : public AActor
+class PORTALREVISITED_API APortal : public AStaticMeshActor
 {
 	GENERATED_BODY()
 
@@ -28,7 +28,7 @@ public:
 	 * will be changed to enter the portal ignoring static mesh behind.
 	 */
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
-	TObjectPtr<UCapsuleComponent> PortalMask;
+	TObjectPtr<UCapsuleComponent> PortalEnterMask;
 
 	/**
 	 * The arrow defines the portal entrance normal, and it helps
@@ -36,8 +36,15 @@ public:
 	 */
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
 	TObjectPtr<UArrowComponent> PortalEntranceDirection;
+
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
+	TObjectPtr<UStaticMeshComponent> PortalInner;
 	
-public:	
+public:
+	void InitMeshPortalHole();
+	void InitPortalEnterMask();
+	void InitPortalEntranceDirection();
+	void InitPortalInner();
 	// Sets default values for this actor's properties
 	APortal();
 

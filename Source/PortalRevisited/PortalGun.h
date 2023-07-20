@@ -10,6 +10,7 @@ class APortalRevisitedCharacter;
 class UInputMappingContext;
 class UInputAction;
 class APortal;
+class AStaticMeshActor;
 
 /**
  * 
@@ -51,6 +52,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void AttachPortalGun(APortalRevisitedCharacter* TargetCharacter);
+	void MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal);
+	void DestroyAllPlanesSpawnedBefore();
+	void SpawnPlanesAroundPortal();
 
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void FireBlue();
@@ -62,4 +66,9 @@ public:
 private:
 	/** The Character holding this weapon*/
 	TObjectPtr<APortalRevisitedCharacter> Character;
+	
+	TObjectPtr<UStaticMesh> PlaneMesh;
+
+	TArray<TObjectPtr<AStaticMeshActor>> BluePortalPlanes;
+	TArray<TObjectPtr<AStaticMeshActor>> OrangePortalPlanes;
 };
