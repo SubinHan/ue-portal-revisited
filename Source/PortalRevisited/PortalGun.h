@@ -65,6 +65,12 @@ public:
 	void MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal);
 	void DestroyAllPlanesSpawnedBefore();
 	void SpawnPlanesAroundPortal();
+	FVector CalculateOffset(
+		const FVector& PortalForward, 
+		const FVector PortalRight, 
+		const FVector PortalUp, 
+		const FVector U, 
+		const double Delta) const;
 
 	PortalCenterAndNormal CalculateCorrectPortalCenter(const FHitResult& HitResult) const;
 	UFUNCTION(BlueprintCallable, Category="PortalGun")

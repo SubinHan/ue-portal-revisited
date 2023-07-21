@@ -216,6 +216,53 @@ void UPortalGun::SpawnPlanesAroundPortal()
 	BluePortalPlanes.Add(SpawnedPlane);
 }
 
+FVector UPortalGun::CalculateOffset(
+	const FVector& PortalForward,
+	const FVector PortalRight, 
+	const FVector PortalUp, 
+	const FVector U, 
+	const double Delta) const
+{
+	FVector ResultPoint;
+
+	const auto V = U.Cross(PortalForward);
+	// Should we move portal to up direction?
+	// If the denominator is 0, then we should
+	// move to right only.
+	const auto RightDotV = PortalRight.Dot(V);
+	const auto Denominator = 
+		PortalUp.X * RightDotV -
+		PortalRight.X * PortalUp.Dot(V);
+	if (Denominator <= 0.001f)
+	{
+		const auto DeltaRight =
+			Delta / PortalRight.X;
+
+		ResultPoint =
+			ResultPoint +
+			DeltaRight * PortalRight;
+	}
+	else
+	{
+		DebugHelper::PrintText("AA");
+		const auto DeltaUp = 
+			Delta * RightDotV /
+			Denominator;
+
+		const auto DeltaRight =
+			-DeltaUp *
+			PortalUp.Dot(V) /
+			PortalRight.Dot(V);
+
+		ResultPoint =
+			ResultPoint +
+			DeltaUp * PortalUp +
+			DeltaRight * PortalRight;
+	}
+
+	return ResultPoint;
+}
+
 UPortalGun::PortalCenterAndNormal UPortalGun::CalculateCorrectPortalCenter(
 	const FHitResult& HitResult) const
 {
@@ -223,8 +270,7 @@ UPortalGun::PortalCenterAndNormal UPortalGun::CalculateCorrectPortalCenter(
 
 	const auto PortalRotation = 
 		CalculatePortalRotation(HitResult.ImpactNormal);
-
-	const auto& ImpactPoint = HitResult.ImpactPoint;
+	
 	const auto PortalUp = GetPortalUpVector(PortalRotation);
 	const auto PortalRight = GetPortalRightVector(PortalRotation);
 	const auto PortalForward = GetPortalForwardVector(PortalRotation);
@@ -256,47 +302,43 @@ UPortalGun::PortalCenterAndNormal UPortalGun::CalculateCorrectPortalCenter(
 		// Impossible.
 		return PortalCenterAndNormal(); 
 	}
-	DebugHelper::PrintVector(ImpactPoint);
+	DebugHelper::PrintVector(ResultPoint);
 	DebugHelper::PrintText(FString::SanitizeFloat(PortalXMax));
 	DebugHelper::PrintText(FString::SanitizeFloat(PortalXMin));
 
 	// Should move portal to +x?
-	if (ImpactPoint.X < PortalXMin)
+	if (ResultPoint.X < PortalXMin)
 	{
 		DebugHelper::PrintText("Should move x+");
 		const auto U = FVector(1.0f, 0.0f, 0.0f);
-		const auto V = U.Cross(HitResult.ImpactNormal);
+		const auto Delta = PortalXMin - ResultPoint.X;
+		
+		ResultPoint = ResultPoint + 
+			CalculateOffset(
+				PortalForward,
+				PortalRight,
+				PortalUp,
+				U,
+				Delta);
+	}
+
+	// Should move portal to +x?
+	if (ResultPoint.X > PortalXMax)
+	{
+		DebugHelper::PrintText("Should move x-");
+		const auto U = FVector(1.0f, 0.0f, 0.0f);
+
+		const auto Delta = PortalXMax - ResultPoint.X;
 
 		// Now we will move U without modifying V components.
-
-		// Should we move portal to up direction?
-		// If the denominator is 0, then we should
-		// move to right only.
-		const auto RightDotV = PortalRight.Dot(V);
-		const auto Denominator = 
-			PortalUp.X * RightDotV -
-			PortalRight.X * PortalUp.Dot(V);
-		if (Denominator <= 0.01f)
-		{
-			
-		}
-		else
-		{
-			DebugHelper::PrintText("AA");
-			const auto DeltaUp = 
-				(PortalXMin - ImpactPoint.X) * RightDotV /
-				Denominator;
-
-			const auto DeltaRight =
-				-DeltaUp *
-				PortalUp.Dot(V) /
-				PortalRight.Dot(V);
-
-			ResultPoint =
-				ResultPoint +
-				DeltaUp * PortalUp +
-				DeltaRight * PortalRight;
-		}
+		
+		ResultPoint = ResultPoint + 
+			CalculateOffset(
+				PortalForward,
+				PortalRight,
+				PortalUp,
+				U,
+				Delta);
 	}
 
 
