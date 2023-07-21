@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include "CoreMinimal.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "PortalGun.generated.h"
@@ -20,6 +22,7 @@ class PORTALREVISITED_API UPortalGun : public USkeletalMeshComponent
 {
 	GENERATED_BODY()
 
+	using PortalCenterAndNormal = std::optional<std::pair<FVector, FVector>>;
 public:
 	UPortalGun();
 
@@ -52,10 +55,18 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void AttachPortalGun(APortalRevisitedCharacter* TargetCharacter);
+	FVector GetPortalUpVector() const;
+	FVector GetPortalRightVector() const;
+	FVector GetPortalForwardVector() const;
+	FVector GetPortalUpVector(const FQuat& PortalRotation) const;
+	FVector GetPortalRightVector(const FQuat& PortalRotation) const;
+	FVector GetPortalForwardVector(const FQuat& PortalRotation) const;
+	FQuat CalculatePortalRotation(const FVector& ImpactNormal) const;
 	void MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal);
 	void DestroyAllPlanesSpawnedBefore();
 	void SpawnPlanesAroundPortal();
 
+	PortalCenterAndNormal CalculateCorrectPortalCenter(const FHitResult& HitResult) const;
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void FireBlue();
 

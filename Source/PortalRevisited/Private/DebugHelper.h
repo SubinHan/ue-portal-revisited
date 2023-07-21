@@ -54,7 +54,8 @@ public:
 
 	static void DrawLine(
 		const FVector& Position,
-		const FVector& Direction)
+		const FVector& Direction,
+		const FColor& Color = FColor::Red)
 	{
 		if (!GEngine)
 			return;
@@ -64,7 +65,7 @@ public:
 		DrawDebugLine(GWorld,
 			Position,
 			Position + Direction * LINE_LENGTH,
-			FColor::Red,
+			Color,
 			false,
 			5.0f);
 	}

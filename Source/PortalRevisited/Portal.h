@@ -30,20 +30,12 @@ public:
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
 	TObjectPtr<UCapsuleComponent> PortalEnterMask;
 
-	/**
-	 * The arrow defines the portal entrance normal, and it helps
-	 * the portal to be generated with correct normal.
-	 */
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
-	TObjectPtr<UArrowComponent> PortalEntranceDirection;
-
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
 	TObjectPtr<UStaticMeshComponent> PortalInner;
 	
 public:
 	void InitMeshPortalHole();
 	void InitPortalEnterMask();
-	void InitPortalEntranceDirection();
 	void InitPortalInner();
 	// Sets default values for this actor's properties
 	APortal();

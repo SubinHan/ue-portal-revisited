@@ -2,6 +2,9 @@
 
 
 #include "PortalGun.h"
+
+#include <optional>
+
 #include "Private/DebugHelper.h"
 
 #include <stdexcept>
@@ -17,6 +20,8 @@
 #include "Engine/StaticMeshActor.h"
 
 constexpr float PORTAL_GUN_RANGE = 3000.f;
+constexpr auto PORTAL_UP_SIZE_HALF = 150.f;
+constexpr auto PORTAL_RIGHT_SIZE_HALF = 100.f;
 
 UPortalGun::UPortalGun()
 	: USkeletalMeshComponent()
@@ -67,62 +72,99 @@ void UPortalGun::AttachPortalGun(APortalRevisitedCharacter* TargetCharacter)
 
 }
 
-void UPortalGun::MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal)
+FVector UPortalGun::GetPortalUpVector() const
 {
-	BluePortal->SetActorLocation(ImpactPoint);
+	return GetPortalUpVector(BluePortal->GetTransform().GetRotation());
+}
+
+FVector UPortalGun::GetPortalRightVector() const
+{
+	return GetPortalRightVector(BluePortal->GetTransform().GetRotation());
+}
+
+FVector UPortalGun::GetPortalForwardVector() const
+{
+	return GetPortalForwardVector(BluePortal->GetTransform().GetRotation());
+}
+
+FVector UPortalGun::GetPortalUpVector(const FQuat& PortalRotation) const
+{
+	return PortalRotation.GetUpVector();
+}
+
+FVector UPortalGun::GetPortalRightVector(const FQuat& PortalRotation) const
+{
+	return PortalRotation.GetRightVector();
+}
+
+FVector UPortalGun::GetPortalForwardVector(const FQuat& PortalRotation) const
+{
+	return PortalRotation.GetForwardVector();
+}
+
+FQuat UPortalGun::CalculatePortalRotation(const FVector& ImpactNormal) const
+{
+	FQuat Result;
 
 	{
-		const auto PortalForward =
-			BluePortal->PortalEntranceDirection->GetForwardVector();
+		const auto PortalForward = 
+			GetPortalForwardVector();
 		const auto OldQuat = PortalForward.ToOrientationQuat();
 		const auto NewQuat = ImpactNormal.ToOrientationQuat();
 
 		const auto DiffQuat = NewQuat * OldQuat.Inverse();
-		const auto Result =
+		Result =
 			DiffQuat * BluePortal->GetTransform().GetRotation();
-
-		BluePortal->SetActorRotation(Result);
 	}
 
+	// The result calculated before is only correctly for
+	// forward vector, but to rotate correctly for up vector
+	// or right vector, correct with WorldZ.
 	const auto WorldZ = FVector(0.0f, 0.0f, 1.0f);
-
+	
 	if (ImpactNormal.Equals(WorldZ))
 	{
-		const auto PortalUp =
-			BluePortal->GetActorForwardVector();
+		const auto PortalUp = GetPortalUpVector(Result);
 		
 		const auto TargetPortalUp = 
 			Character->GetActorForwardVector();
+
+		const auto RotateAxis = 
+			PortalUp.Cross(TargetPortalUp).GetSafeNormal();
+		const auto CosTheta = PortalUp.Dot(TargetPortalUp);
 		
-		DebugHelper::PrintVector(TargetPortalUp);
+		const auto ThetaRadian = FMath::Acos(CosTheta);
 
-		const auto OldQuat = PortalUp.ToOrientationQuat();
-		const auto NewQuat = TargetPortalUp.ToOrientationQuat();
-
-		const auto DiffQuat = NewQuat * OldQuat.Inverse();
-		const auto Result =
-			DiffQuat * BluePortal->GetTransform().GetRotation();
-
-		BluePortal->SetActorRotation(Result);
+		Result = FQuat(RotateAxis, ThetaRadian) * Result;
 	}
 	else
 	{
-		const auto PortalRight =
-			BluePortal->GetActorRightVector();
-
-		const auto TargetPortalRight =
-			WorldZ.Cross(ImpactNormal);
+		const auto PortalRight =	GetPortalRightVector(Result);
 		
-		const auto OldQuat = PortalRight.ToOrientationQuat();
-		const auto NewQuat = TargetPortalRight.ToOrientationQuat();
-
-		const auto DiffQuat = NewQuat * OldQuat.Inverse();
-		const auto Result =
-			DiffQuat * BluePortal->GetTransform().GetRotation();
-
-		BluePortal->SetActorRotation(Result);
+		const FVector TargetPortalRight =
+			FVector::CrossProduct(WorldZ, ImpactNormal);
+		
+		FVector RotateAxis;
+		if (!PortalRight.Equals(TargetPortalRight))
+		{
+			RotateAxis = 
+				PortalRight.Cross(TargetPortalRight).GetSafeNormal();
+			const auto CosTheta = PortalRight.Dot(TargetPortalRight);
+			const auto ThetaRadian = FMath::Acos(CosTheta);
+			
+			Result = FQuat(RotateAxis, ThetaRadian) * Result;
+		}
 	}
 
+	return Result;
+}
+
+void UPortalGun::MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal)
+{
+	BluePortal->SetActorLocation(ImpactPoint);
+
+	const auto Result = CalculatePortalRotation(ImpactNormal);
+	BluePortal->SetActorRotation(Result);
 }
 
 void UPortalGun::DestroyAllPlanesSpawnedBefore()
@@ -152,8 +194,6 @@ void UPortalGun::SpawnPlanesAroundPortal()
 	const FVector PortalNormal = BluePortal->GetActorForwardVector();
 	const FVector PortalUp = BluePortal->GetActorUpVector();
 	const FVector PortalRight = BluePortal->GetActorRightVector();
-
-
 	
 	const FRotator SpawnRotation = BluePortal->GetActorRotation();
 	const FVector SpawnLocation = BluePortal->GetActorLocation();
@@ -176,11 +216,99 @@ void UPortalGun::SpawnPlanesAroundPortal()
 	BluePortalPlanes.Add(SpawnedPlane);
 }
 
+UPortalGun::PortalCenterAndNormal UPortalGun::CalculateCorrectPortalCenter(
+	const FHitResult& HitResult) const
+{
+	FVector ResultPoint = HitResult.ImpactPoint;
+
+	const auto PortalRotation = 
+		CalculatePortalRotation(HitResult.ImpactNormal);
+
+	const auto& ImpactPoint = HitResult.ImpactPoint;
+	const auto PortalUp = GetPortalUpVector(PortalRotation);
+	const auto PortalRight = GetPortalRightVector(PortalRotation);
+	const auto PortalForward = GetPortalForwardVector(PortalRotation);
+
+	const auto OtherActorBounds =
+		HitResult.GetActor()->GetComponentsBoundingBox();
+	
+	const auto Center = OtherActorBounds.GetCenter();
+	const auto Extent = OtherActorBounds.GetExtent();
+	
+	DebugHelper::PrintVector(Center);
+	DebugHelper::PrintVector(Extent);
+
+	// Calculate boundary of X coordinate.
+	const auto XMax = FMath::Max(Center.X + Extent.X, Center.X - Extent.X);
+	const auto XMin = FMath::Min(Center.X + Extent.X, Center.X - Extent.X);
+
+	const auto PortalXSizeHalf = 
+		PORTAL_UP_SIZE_HALF * FMath::Abs(PortalUp.X) +
+		PORTAL_RIGHT_SIZE_HALF * FMath::Abs(PortalRight.X);
+
+	// Portal.X should be in the boundary:
+	// PortalXMin <= Portal.X < PortalXMax
+	const auto PortalXMax = XMax - PortalXSizeHalf;
+	const auto PortalXMin = XMin + PortalXSizeHalf;
+
+	if (PortalXMax - PortalXMin < 2 * PortalXSizeHalf)
+	{
+		// Impossible.
+		return PortalCenterAndNormal(); 
+	}
+	DebugHelper::PrintVector(ImpactPoint);
+	DebugHelper::PrintText(FString::SanitizeFloat(PortalXMax));
+	DebugHelper::PrintText(FString::SanitizeFloat(PortalXMin));
+
+	// Should move portal to +x?
+	if (ImpactPoint.X < PortalXMin)
+	{
+		DebugHelper::PrintText("Should move x+");
+		const auto U = FVector(1.0f, 0.0f, 0.0f);
+		const auto V = U.Cross(HitResult.ImpactNormal);
+
+		// Now we will move U without modifying V components.
+
+		// Should we move portal to up direction?
+		// If the denominator is 0, then we should
+		// move to right only.
+		const auto RightDotV = PortalRight.Dot(V);
+		const auto Denominator = 
+			PortalUp.X * RightDotV -
+			PortalRight.X * PortalUp.Dot(V);
+		if (Denominator <= 0.01f)
+		{
+			
+		}
+		else
+		{
+			DebugHelper::PrintText("AA");
+			const auto DeltaUp = 
+				(PortalXMin - ImpactPoint.X) * RightDotV /
+				Denominator;
+
+			const auto DeltaRight =
+				-DeltaUp *
+				PortalUp.Dot(V) /
+				PortalRight.Dot(V);
+
+			ResultPoint =
+				ResultPoint +
+				DeltaUp * PortalUp +
+				DeltaRight * PortalRight;
+		}
+	}
+
+
+	return PortalCenterAndNormal(
+		std::make_pair(ResultPoint, HitResult.ImpactNormal));
+}
+
 void UPortalGun::FireBlue()
 {
 	DebugHelper::PrintText(TEXT("FireBlue"));
 
-	if (!BluePortal || !OrangePortal)
+	if (!BluePortal)
 		return;
 
 	auto Camera = Character->GetFirstPersonCameraComponent();
@@ -191,15 +319,6 @@ void UPortalGun::FireBlue()
 
 	FCollisionQueryParams CollisionParams;
 	CollisionParams.AddIgnoredActor(Character);
-
-	DrawDebugLine(GetWorld(), 
-		Start, 
-		End, 
-		FColor::Green,
-		false,
-		1,
-		0,
-		1);
 
 	FHitResult HitResult;
 
@@ -212,30 +331,17 @@ void UPortalGun::FireBlue()
 
 	if (!bIsHit)
 		return;
-
-	const auto OtherActorLocation = 
-		HitResult.GetActor()->GetActorLocation();
-
-	DebugHelper::PrintVector(HitResult.ImpactPoint);
-
-	const auto OtherActorScale =
-		HitResult.GetActor()->GetActorTransform().GetScale3D();
-	DebugHelper::PrintVector(OtherActorScale);
-
-	const auto OtherActorBounds =
-		HitResult.GetActor()->GetComponentsBoundingBox();
-
-	const auto BoundCenter = OtherActorBounds.GetCenter();
-	const auto BoundExtent = OtherActorBounds.GetExtent();
-
-	DebugHelper::PrintVector(BoundCenter);
-	DebugHelper::PrintVector(BoundExtent);
 	
-	const auto ImpactPoint = HitResult.ImpactPoint;
-	const auto ImpactNormal = HitResult.ImpactNormal;
+	PortalCenterAndNormal PortalPoint
+		= CalculateCorrectPortalCenter(HitResult);
 
-	MovePortal(ImpactPoint, ImpactNormal);
+	if (!PortalPoint.has_value())
+	{
+		// Portal cannot be created.
+		return;
+	}
 
+	MovePortal(PortalPoint->first, PortalPoint->second);
 	SpawnPlanesAroundPortal();
 }
 

@@ -25,8 +25,11 @@ void APortal::InitMeshPortalHole()
 	MeshPortalHole->CastShadow = false;
 	MeshPortalHole->SetupAttachment(RootComponent);
 	//MeshPortalHole->SetVisibility(false);
-
-	// TODO: Hard coded object type.
+	
+	// TODO: Hard coded rotation, object type.
+	const auto Rotator = 
+		FRotator::MakeFromEuler(FVector(0.0f, -90.0f, 0.0f));
+	MeshPortalHole->SetRelativeRotation(Rotator);
 	MeshPortalHole->SetCollisionObjectType(ECollisionChannel::ECC_GameTraceChannel2);
 
 	Asset<UStaticMesh> PortalHoleMesh(
@@ -55,18 +58,6 @@ void APortal::InitPortalEnterMask()
 	PortalEnterMask->OnComponentEndOverlap.AddDynamic(this, &APortal::OnOverlapEnd);
 }
 
-void APortal::InitPortalEntranceDirection()
-{
-	PortalEntranceDirection =
-		CreateDefaultSubobject<UArrowComponent>("PortalEntranceDirection");
-	PortalEntranceDirection->SetupAttachment(MeshPortalHole);
-	
-	// TODO: Hard coded rotation
-	const auto Rotator = 
-		FRotator::MakeFromEuler(FVector(0.0f, 90.0f, 0.0f));
-	PortalEntranceDirection->SetRelativeRotation(Rotator);
-}
-
 void APortal::InitPortalInner()
 {
 	PortalInner =
@@ -75,7 +66,7 @@ void APortal::InitPortalInner()
 	PortalInner->SetCollisionProfileName("NoCollision");
 
 	// TODO: Hard coded scale
-	PortalInner->SetRelativeLocation(FVector(0.0f, 0.0f, 30.0f));
+	PortalInner->SetRelativeLocation(FVector(0.0f, 0.0f, 40.0f));
 	PortalInner->SetRelativeScale3D(FVector(3.0f, 2.0f, 0.2f));
 
 	Asset<UStaticMesh> PortalInnerMesh(
@@ -107,7 +98,6 @@ APortal::APortal()
 
 	InitMeshPortalHole();
 	InitPortalEnterMask();
-	InitPortalEntranceDirection();
 	InitPortalInner();
 
 	DebugHelper::PrintText(L"PortalCreated");
