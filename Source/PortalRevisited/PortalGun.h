@@ -22,7 +22,8 @@ class PORTALREVISITED_API UPortalGun : public USkeletalMeshComponent
 {
 	GENERATED_BODY()
 
-	using PortalCenterAndNormal = std::optional<std::pair<FVector, FVector>>;
+	using PortalCenterAndNormal = std::optional<std::pair<FVector, FQuat>>;
+	using PortalOffset = std::optional<FVector>;
 public:
 	UPortalGun();
 
@@ -73,6 +74,14 @@ public:
 		const double Delta) const;
 
 	PortalCenterAndNormal CalculateCorrectPortalCenter(const FHitResult& HitResult) const;
+	PortalOffset MovePortalUAxisAligned(
+		const FVector& BoundCenter, 
+		const FVector& BoundExtent, 
+		const FVector& PortalForward, 
+		const FVector& PortalRight,
+		const FVector& PortalUp,
+		const FVector& PortalPoint,
+		const FVector& U) const;
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void FireBlue();
 
