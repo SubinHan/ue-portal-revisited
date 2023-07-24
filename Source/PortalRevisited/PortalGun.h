@@ -45,6 +45,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portal")
 	TObjectPtr<APortal> OrangePortal;
 
+	TObjectPtr<UTextureRenderTarget2D> BluePortalTexture;
+	TObjectPtr<UTextureRenderTarget2D> OrangePortalTexture;
 
 	/** MappingContext */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
@@ -56,14 +58,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void AttachPortalGun(APortalRevisitedCharacter* TargetCharacter);
-	FVector GetPortalUpVector() const;
-	FVector GetPortalRightVector() const;
-	FVector GetPortalForwardVector() const;
-	FVector GetPortalUpVector(const FQuat& PortalRotation) const;
-	FVector GetPortalRightVector(const FQuat& PortalRotation) const;
-	FVector GetPortalForwardVector(const FQuat& PortalRotation) const;
-	FQuat CalculatePortalRotation(const FVector& ImpactNormal) const;
-	void MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal);
+	FQuat CalculatePortalRotation(const FVector& ImpactNormal, const APortal& TargetPortal) const;
+	void MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal, const APortal& TargetPortal);
 	void DestroyAllPlanesSpawnedBefore();
 	void SpawnPlanesAroundPortal();
 	FVector CalculateOffset(
@@ -73,7 +69,7 @@ public:
 		const FVector U, 
 		const double Delta) const;
 
-	PortalCenterAndNormal CalculateCorrectPortalCenter(const FHitResult& HitResult) const;
+	PortalCenterAndNormal CalculateCorrectPortalCenter(const FHitResult& HitResult, const APortal& TargetPortal) const;
 	PortalOffset MovePortalUAxisAligned(
 		const FVector& BoundCenter, 
 		const FVector& BoundExtent, 
@@ -87,7 +83,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void FireOrange();
-
+	virtual void PostInitProperties() override;
 
 private:
 	/** The Character holding this weapon*/

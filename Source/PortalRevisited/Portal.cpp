@@ -8,6 +8,10 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/ArrowComponent.h"
+#include "Components/SceneCaptureComponent2D.h"
+#include "Engine/TextureRenderTarget2D.h"
+
+DEFINE_LOG_CATEGORY(Portal);
 
 #define PORTAL_COLLISION_PROFILE_NAME "Pawn_Hole"
 #define STANDARD_COLLISION_PROFILE_NAME "Pawn"
@@ -30,6 +34,7 @@ void APortal::InitMeshPortalHole()
 	const auto Rotator = 
 		FRotator::MakeFromEuler(FVector(0.0f, -90.0f, 0.0f));
 	MeshPortalHole->SetRelativeRotation(Rotator);
+	MeshPortalHole->SetRelativeLocation(FVector(-50.0, 0.0, 0.0));
 	MeshPortalHole->SetCollisionObjectType(ECollisionChannel::ECC_GameTraceChannel2);
 
 	Asset<UStaticMesh> PortalHoleMesh(
@@ -66,7 +71,7 @@ void APortal::InitPortalInner()
 	PortalInner->SetCollisionProfileName("NoCollision");
 
 	// TODO: Hard coded scale
-	PortalInner->SetRelativeLocation(FVector(0.0f, 0.0f, 40.0f));
+	PortalInner->SetRelativeLocation(FVector(0.0f, 0.0f, 43.f));
 	PortalInner->SetRelativeScale3D(FVector(3.0f, 2.0f, 0.2f));
 
 	Asset<UStaticMesh> PortalInnerMesh(
@@ -86,7 +91,149 @@ void APortal::InitPortalInner()
 	}
 
 	PortalInner->SetRenderCustomDepth(true);
-	PortalInner->SetCustomDepthStencilValue(DEFAULT_STENCIL_VALUE);
+	PortalStencilValue = DEFAULT_STENCIL_VALUE;
+	PortalInner->SetCustomDepthStencilValue(PortalStencilValue);
+}
+
+void APortal::InitPortalCamera()
+{
+	PortalCamera = 
+		CreateDefaultSubobject<USceneCaptureComponent2D>("PortalCamera");
+	PortalCamera->SetupAttachment(MeshPortalHole);
+
+	const auto Rotator = 
+		FRotator::MakeFromEuler(FVector(0.0f, 90.0f, 0.0f));
+	PortalCamera->SetRelativeRotation(Rotator);
+
+	PortalCamera->CaptureSource = SCS_FinalColorHDR;
+	PortalCamera->ShowFlags.LocalExposure = false;
+	PortalCamera->ShowFlags.EyeAdaptation = false;
+	PortalCamera->bEnableClipPlane = true;
+	PortalCamera->bCaptureEveryFrame = false;
+	PortalCamera->bCaptureOnMovement = false;
+	PortalCamera->bAlwaysPersistRenderingState = true;
+
+	PortalCamera->TextureTarget = nullptr;
+}
+
+void APortal::UpdateCaptureCamera()
+{
+	if (!LinkedPortal)
+	{
+		UE_LOG(Portal, Error, TEXT("Portal isn't linked. Please link the portal."));
+		return;
+	}
+
+	auto PlayerCamera = GWorld->GetFirstPlayerController()->PlayerCameraManager;
+
+	auto PlayerCameraLocation = PlayerCamera->GetCameraLocation();
+	auto PlayerCameraQuat = PlayerCamera->GetActorQuat();
+
+	const auto ThisLocation = GetPortalPlaneLocation();
+	const auto ThisForward = GetActorForwardVector();
+	const auto ThisRight = GetActorRightVector();
+	const auto ThisUp = GetActorUpVector();
+	const auto ThisQuat = GetActorQuat();
+
+	const auto TargetLocation = LinkedPortal->GetPortalPlaneLocation();
+	const auto TargetForward = LinkedPortal->GetActorForwardVector();
+	const auto TargetRight = LinkedPortal->GetActorRightVector();
+	const auto TargetUp = LinkedPortal->GetActorUpVector();
+	const auto TargetQuat = LinkedPortal->GetActorQuat();
+
+	const auto ResultLocation = TransformPointToDestSpace(
+		PlayerCameraLocation,
+		ThisLocation,
+		ThisForward,
+		ThisRight,
+		ThisUp,
+		TargetLocation,
+		-TargetForward,
+		-TargetRight,
+		TargetUp);
+
+	const auto ResultQuat = TransformQuatToDestSpace(
+		PlayerCameraQuat,
+		ThisQuat,
+		TargetQuat,
+		TargetUp);
+
+	PortalCamera->SetWorldLocationAndRotation(
+		ResultLocation,
+		ResultQuat);
+	
+	DebugHelper::DrawPoint(ThisLocation);
+}
+
+FVector APortal::GetPortalPlaneLocation() const
+{
+	const auto PortalInnerOffset = 3.0;
+
+	return GetActorLocation() +
+		PortalInnerOffset * GetPortalForwardVector();
+}
+
+uint8 APortal::GetPortalCustomStencilValue() const
+{
+	return PortalStencilValue;
+}
+
+void APortal::SetPortalCustomStencilValue(uint8 NewValue)
+{
+	PortalStencilValue = NewValue;
+	PortalInner->SetCustomDepthStencilValue(PortalStencilValue);
+}
+
+FVector APortal::GetPortalUpVector() const
+{
+	return GetPortalUpVector(GetActorQuat());
+}
+
+FVector APortal::GetPortalRightVector() const
+{
+	return GetPortalRightVector(GetActorQuat());
+}
+
+FVector APortal::GetPortalForwardVector() const
+{
+	return GetPortalForwardVector(GetActorQuat());
+}
+
+FVector APortal::GetPortalUpVector(const FQuat& PortalRotation) const
+{
+	return PortalRotation.GetUpVector();
+}
+
+FVector APortal::GetPortalRightVector(const FQuat& PortalRotation) const
+{
+	return PortalRotation.GetRightVector();
+}
+
+FVector APortal::GetPortalForwardVector(const FQuat& PortalRotation) const
+{
+	return PortalRotation.GetForwardVector();
+}
+
+
+void APortal::UpdateCapture()
+{
+	if (!PortalCamera->TextureTarget)
+	{
+		UE_LOG(Portal, Error, TEXT("Portal render target isn't set"));
+		return;
+	}
+
+	if (!LinkedPortal)
+	{
+		UE_LOG(Portal, Error, TEXT("Portal isn't linked."));
+		return;
+	}
+
+	UpdateCaptureCamera();
+	PortalCamera->ClipPlaneBase = LinkedPortal->GetPortalPlaneLocation();
+	PortalCamera->ClipPlaneNormal = LinkedPortal->GetActorForwardVector();
+	
+	PortalCamera->CaptureScene();
 }
 
 // Sets default values
@@ -94,27 +241,66 @@ APortal::APortal()
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
+
 	SetMobility(EComponentMobility::Movable);
 
 	InitMeshPortalHole();
 	InitPortalEnterMask();
 	InitPortalInner();
+	InitPortalCamera();
 
 	DebugHelper::PrintText(L"PortalCreated");
+}
+
+void APortal::LinkPortal(TObjectPtr<APortal> NewTarget)
+{
+	if (NewTarget.Get() == this)
+	{
+		UE_LOG(Portal, Error, TEXT("Cannot link portal itself."));
+		return;
+	}
+	
+	SetTickGroup(TG_PostUpdateWork);
+	this->LinkedPortal = NewTarget;
+}
+
+void APortal::SetPortalTexture(TObjectPtr<UTextureRenderTarget2D> NewTexture)
+{
+	PortalTexture = NewTexture;
+	
+	int32 ResolutionX = 1920;
+	int32 ResolutionY = 1080;
+
+	GWorld->GetFirstPlayerController()->GetViewportSize(
+			ResolutionX,
+			ResolutionY);
+
+	PortalTexture->SizeX = ResolutionX;
+	PortalTexture->SizeY = ResolutionY;
+	PortalTexture->RenderTargetFormat = RTF_RGBA16f;
+	PortalTexture->Filter = TF_Bilinear;
+	PortalTexture->ClearColor = FLinearColor::Black;
+	PortalTexture->TargetGamma = 2.2f;
+	PortalTexture->bNeedsTwoCopies = false;
+
+	PortalTexture->bAutoGenerateMips = false;
+
+	PortalTexture->UpdateResource();
+
+	PortalCamera->TextureTarget = PortalTexture;
 }
 
 // Called when the game starts or when spawned
 void APortal::BeginPlay()
 {
 	Super::BeginPlay();
-	
 }
 
 // Called every frame
 void APortal::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
+	UpdateCapture();
 }
 
 void APortal::OnOverlapBegin(
@@ -169,5 +355,72 @@ void APortal::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherAct
 	}
 	
 	OtherComp->SetCollisionProfileName(TEXT(STANDARD_COLLISION_PROFILE_NAME));
+}
+
+FVector APortal::TransformVectorToDestSpace(
+	const FVector& Target, 
+	const FVector& SrcPortalForward,
+	const FVector& SrcPortalRight, 
+	const FVector& SrcPortalUp,
+	const FVector& DestPortalForward,
+	const FVector& DestPortalRight, 
+	const FVector& DestPortalUp)
+{
+	FVector Coordinate;
+	Coordinate.X = FVector::DotProduct(Target, SrcPortalForward);
+	Coordinate.Y = FVector::DotProduct(Target, SrcPortalRight);
+	Coordinate.Z = FVector::DotProduct(Target, SrcPortalUp);
+	
+	return Coordinate.X * DestPortalForward +
+		Coordinate.Y * DestPortalRight +
+		Coordinate.Z * DestPortalUp;
+}
+
+FVector APortal::TransformPointToDestSpace(
+	const FVector& Target,
+	const FVector& SrcPortalPos,
+	const FVector& SrcPortalForward,
+	const FVector& SrcPortalRight, 
+	const FVector& SrcPortalUp,
+	const FVector& DestPortalPos, 
+	const FVector& DestPortalForward, 
+	const FVector& DestPortalRight,
+	const FVector& DestPortalUp)
+{
+	const FVector SrcToTarget = Target - SrcPortalPos;
+
+	const FVector DestToTarget = TransformVectorToDestSpace(
+		SrcToTarget,
+		SrcPortalForward,
+		SrcPortalRight,
+		SrcPortalUp,
+		DestPortalForward,
+		DestPortalRight,
+		DestPortalUp
+	);
+	
+	return DestPortalPos + DestToTarget;
+}
+
+FQuat APortal::TransformQuatToDestSpace(
+	const FQuat& Target,
+	const FQuat& SrcPortalQuat, 
+	const FQuat& DestPortalQuat,
+	const FVector DestPortalUp)
+{
+	const FQuat Diff = DestPortalQuat * SrcPortalQuat.Inverse();
+	FQuat Result = Diff * Target;
+
+	// Turn 180 degrees.
+	// Multiply the up axis pure quaternion by sin(90) (real part is cos(90))
+	FQuat Rotator = FQuat(DestPortalUp, PI);
+
+	return Rotator * Result;
+}
+
+bool APortal::IsPointInFrontOfPortal(const FVector& Point, const FVector& PortalPos, const FVector& PortalNormal)
+{
+	const FVector PointToPortal = PortalPos - Point;
+	return FVector::DotProduct(PointToPortal, PortalNormal) < 0.0;
 }
 

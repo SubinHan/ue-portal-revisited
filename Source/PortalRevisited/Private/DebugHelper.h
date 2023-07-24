@@ -69,4 +69,15 @@ public:
 			false,
 			5.0f);
 	}
+
+	static void DrawPoint(
+		const FVector& Position,
+		const FColor& Color = FColor::Red)
+	{
+		DrawDebugPoint(
+			GWorld,
+			Position,
+			5.0f,
+			Color);
+	}
 };

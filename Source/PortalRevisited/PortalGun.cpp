@@ -18,6 +18,7 @@
 #include "Camera/CameraComponent.h"
 #include "Components/ArrowComponent.h"
 #include "Engine/StaticMeshActor.h"
+#include "Engine/TextureRenderTarget2D.h"
 
 constexpr float PORTAL_GUN_RANGE = 3000.f;
 constexpr auto PORTAL_UP_SIZE_HALF = 150.f;
@@ -37,6 +38,35 @@ UPortalGun::UPortalGun()
 		Asset SphereMeshAsset(
 			TEXT("StaticMesh'/Engine/BasicShapes/Sphere.Sphere'"));
 	}
+	
+	using TextureAsset = 
+		ConstructorHelpers::FObjectFinder<UTextureRenderTarget2D>;
+
+	TextureAsset BluePortalTextureAsset(
+		TEXT("TextureRenderTarget2D'/Game/RT_BluePortal.RT_BluePortal'"));
+	TextureAsset OrangePortalTextureAsset(
+		TEXT("TextureRenderTarget2D'/Game/RT_OrangePortal.RT_OrangePortal'"));
+	
+	if (BluePortalTextureAsset.Object)
+	{
+		BluePortalTexture = BluePortalTextureAsset.Object;
+	}
+	if (OrangePortalTextureAsset.Object)
+	{
+		OrangePortalTexture = OrangePortalTextureAsset.Object;
+	}
+}
+
+void UPortalGun::LinkPortal()
+{
+	BluePortal->LinkPortal(OrangePortal);
+	OrangePortal->LinkPortal(BluePortal);
+
+	BluePortal->SetPortalTexture(BluePortalTexture);
+	OrangePortal->SetPortalTexture(OrangePortalTexture);
+
+	BluePortal->SetPortalCustomStencilValue(1);
+	OrangePortal->SetPortalCustomStencilValue(2);
 }
 
 void UPortalGun::AttachPortalGun(APortalRevisitedCharacter* TargetCharacter)
@@ -46,6 +76,20 @@ void UPortalGun::AttachPortalGun(APortalRevisitedCharacter* TargetCharacter)
 	{
 		return;
 	}
+
+	if (!BluePortal || !OrangePortal)
+	{
+		UE_LOG(Portal, Error, TEXT("Blue or Orange portal isn't set."));
+		return;
+	}
+
+	if (!BluePortalTexture || !OrangePortalTexture)
+	{
+		UE_LOG(Portal, Error, TEXT("Cannot find portal textures.(RT_BluePortal, RT_OrangePortal)"))
+		return;
+	}
+
+	LinkPortal();
 	
 	// Attach the weapon to the First Person Character
 	FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, true);
@@ -72,43 +116,13 @@ void UPortalGun::AttachPortalGun(APortalRevisitedCharacter* TargetCharacter)
 
 }
 
-FVector UPortalGun::GetPortalUpVector() const
-{
-	return GetPortalUpVector(BluePortal->GetTransform().GetRotation());
-}
-
-FVector UPortalGun::GetPortalRightVector() const
-{
-	return GetPortalRightVector(BluePortal->GetTransform().GetRotation());
-}
-
-FVector UPortalGun::GetPortalForwardVector() const
-{
-	return GetPortalForwardVector(BluePortal->GetTransform().GetRotation());
-}
-
-FVector UPortalGun::GetPortalUpVector(const FQuat& PortalRotation) const
-{
-	return PortalRotation.GetUpVector();
-}
-
-FVector UPortalGun::GetPortalRightVector(const FQuat& PortalRotation) const
-{
-	return PortalRotation.GetRightVector();
-}
-
-FVector UPortalGun::GetPortalForwardVector(const FQuat& PortalRotation) const
-{
-	return PortalRotation.GetForwardVector();
-}
-
-FQuat UPortalGun::CalculatePortalRotation(const FVector& ImpactNormal) const
+FQuat UPortalGun::CalculatePortalRotation(const FVector& ImpactNormal, const APortal& TargetPortal) const
 {
 	FQuat Result;
 
 	{
 		const auto PortalForward = 
-			GetPortalForwardVector();
+			TargetPortal.GetPortalForwardVector();
 		const auto OldQuat = PortalForward.ToOrientationQuat();
 		const auto NewQuat = ImpactNormal.ToOrientationQuat();
 
@@ -124,7 +138,7 @@ FQuat UPortalGun::CalculatePortalRotation(const FVector& ImpactNormal) const
 	
 	if (ImpactNormal.Equals(WorldZ))
 	{
-		const auto PortalUp = GetPortalUpVector(Result);
+		const auto PortalUp = TargetPortal.GetPortalUpVector(Result);
 		
 		const auto TargetPortalUp = 
 			Character->GetActorForwardVector();
@@ -139,7 +153,7 @@ FQuat UPortalGun::CalculatePortalRotation(const FVector& ImpactNormal) const
 	}
 	else
 	{
-		const auto PortalRight =	GetPortalRightVector(Result);
+		const auto PortalRight = TargetPortal.GetPortalRightVector(Result);
 		
 		const FVector TargetPortalRight =
 			FVector::CrossProduct(WorldZ, ImpactNormal).GetSafeNormal();
@@ -159,11 +173,11 @@ FQuat UPortalGun::CalculatePortalRotation(const FVector& ImpactNormal) const
 	return Result;
 }
 
-void UPortalGun::MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal)
+void UPortalGun::MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal, const APortal& TargetPortal)
 {
 	BluePortal->SetActorLocation(ImpactPoint);
 
-	const auto Result = CalculatePortalRotation(ImpactNormal);
+	const auto Result = CalculatePortalRotation(ImpactNormal, TargetPortal);
 	BluePortal->SetActorRotation(Result);
 }
 
@@ -262,18 +276,19 @@ FVector UPortalGun::CalculateOffset(
 }
 
 UPortalGun::PortalCenterAndNormal UPortalGun::CalculateCorrectPortalCenter(
-	const FHitResult& HitResult) const
+	const FHitResult& HitResult, 
+	const APortal& TargetPortal) const
 {
 	constexpr auto PortalForwardOffset = 3.0f;
 	FVector ResultPoint = HitResult.ImpactPoint - 
 		PortalForwardOffset * HitResult.ImpactNormal;
 
 	const auto PortalRotation = 
-		CalculatePortalRotation(HitResult.ImpactNormal);
+		CalculatePortalRotation(HitResult.ImpactNormal, TargetPortal);
 	
-	const auto PortalUp = GetPortalUpVector(PortalRotation);
-	const auto PortalRight = GetPortalRightVector(PortalRotation);
-	const auto PortalForward = GetPortalForwardVector(PortalRotation);
+	const auto PortalUp = TargetPortal.GetPortalUpVector(PortalRotation);
+	const auto PortalRight = TargetPortal.GetPortalRightVector(PortalRotation);
+	const auto PortalForward = TargetPortal.GetPortalForwardVector(PortalRotation);
 
 	const auto OtherActorBounds =
 		HitResult.GetActor()->GetComponentsBoundingBox();
@@ -432,6 +447,7 @@ void UPortalGun::FireBlue()
 
 	FCollisionQueryParams CollisionParams;
 	CollisionParams.AddIgnoredActor(Character);
+	CollisionParams.AddIgnoredActor(BluePortal);
 
 	FHitResult HitResult;
 
@@ -446,7 +462,7 @@ void UPortalGun::FireBlue()
 		return;
 	
 	PortalCenterAndNormal PortalPoint
-		= CalculateCorrectPortalCenter(HitResult);
+		= CalculateCorrectPortalCenter(HitResult, *BluePortal);
 
 	if (!PortalPoint)
 	{
@@ -464,4 +480,21 @@ void UPortalGun::FireBlue()
 void UPortalGun::FireOrange()
 {
 	throw std::logic_error("Not implemented");
+}
+
+void UPortalGun::PostInitProperties()
+{
+	Super::PostInitProperties();
+	DebugHelper::PrintText("AA");
+	if (!BluePortal)
+		DebugHelper::PrintText("AC");
+	
+	if (!OrangePortal)
+		DebugHelper::PrintText("AD");
+	if (!BluePortal || !OrangePortal)
+		return;
+	DebugHelper::PrintText("AB");
+
+	BluePortal->LinkPortal(OrangePortal);
+	OrangePortal->LinkPortal(BluePortal);
 }
