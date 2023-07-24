@@ -54,7 +54,6 @@ public:
 		AActor* OtherActor,
 		UPrimitiveComponent* OtherComp,
 		int32 OtherBodyIndex);
-
 	// Sets default values for this actor's properties
 	APortal();
 
@@ -64,6 +63,8 @@ public:
 private:
 	TObjectPtr<APortal> LinkedPortal;
 	uint8 PortalStencilValue;
+
+	TArray<TObjectPtr<AActor>> OverlappingActors;
 
 protected:
 	// Called when the game starts or when spawned
@@ -92,6 +93,14 @@ private:
 
 	void UpdateCaptureCamera();
 	void UpdateCapture();
+	void CheckAndTeleportOverlappingActors();
+	void TeleportActor(AActor& Actor);
+
+	FVector TransformVectorToDestSpace(const FVector& Target);
+	static FVector TransformVectorToDestSpace(
+		const FVector& Target, 
+		const APortal& SrcPortal, 
+		const APortal& DestPortal);
 
 	/**
 	 * Transform the given vector by using given Portals' coordinates.
@@ -104,8 +113,13 @@ private:
 		const FVector& SrcPortalUp,
 		const FVector& DestPortalForward,
 		const FVector& DestPortalRight,
-		const FVector& DestPortalUp
-	);
+		const FVector& DestPortalUp);
+
+	FVector TransformPointToDestSpace(const FVector& Target);
+	static FVector TransformPointToDestSpace(
+		const FVector& Target, 
+		const APortal& SrcPortal, 
+		const APortal& DestPortal);
 
 	/**
 	 * Transform the given point by using given Portals' coordinates.
@@ -120,8 +134,13 @@ private:
 		const FVector& DestPortalPos,
 		const FVector& DestPortalForward,
 		const FVector& DestPortalRight,
-		const FVector& DestPortalUp
-	);
+		const FVector& DestPortalUp);
+
+	FQuat TransformQuatToDestSpace(const FQuat& Target);
+	static FQuat TransformQuatToDestSpace(
+		const FQuat& Target, 
+		const APortal& SrcPortal, 
+		const APortal& DestPortal);
 
 	/**
 	 * Transform the given quaternion by using given Portals' quaternion.
@@ -131,14 +150,12 @@ private:
 		const FQuat& Target,
 		const FQuat& SrcPortalQuat,
 		const FQuat& DestPortalQuat,
-		const FVector DestPortalUp
-	);
+		const FVector DestPortalUp);
 
 	static bool IsPointInFrontOfPortal(
 		const FVector& Point,
 		const FVector& PortalPos,
-		const FVector& PortalNormal
-	);
+		const FVector& PortalNormal);
 
 
 };

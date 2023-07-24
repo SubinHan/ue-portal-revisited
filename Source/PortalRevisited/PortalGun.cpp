@@ -474,7 +474,7 @@ void UPortalGun::FireBlue()
 	BluePortal->SetActorLocation(PortalPoint->first);
 	BluePortal->SetActorRotation(PortalPoint->second);
 	
-	SpawnPlanesAroundPortal();
+	//SpawnPlanesAroundPortal();
 }
 
 void UPortalGun::FireOrange()

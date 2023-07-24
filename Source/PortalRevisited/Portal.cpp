@@ -5,10 +5,14 @@
 #include "Private/DebugHelper.h"
 #include <stdexcept>
 
+#include "PortalRevisitedCharacter.h"
+#include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/ArrowComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
+#include "GameFramework/PawnMovementComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/TextureRenderTarget2D.h"
 
 DEFINE_LOG_CATEGORY(Portal);
@@ -214,7 +218,6 @@ FVector APortal::GetPortalForwardVector(const FQuat& PortalRotation) const
 	return PortalRotation.GetForwardVector();
 }
 
-
 void APortal::UpdateCapture()
 {
 	if (!PortalCamera->TextureTarget)
@@ -234,6 +237,87 @@ void APortal::UpdateCapture()
 	PortalCamera->ClipPlaneNormal = LinkedPortal->GetActorForwardVector();
 	
 	PortalCamera->CaptureScene();
+}
+
+void APortal::CheckAndTeleportOverlappingActors()
+{
+	TArray<TObjectPtr<AActor>> TeleportedActors;
+
+	for (auto OverlappingActor : OverlappingActors)
+	{
+		FVector ActorLocation;
+
+		if (auto Player = 
+			Cast<APortalRevisitedCharacter>(OverlappingActor))
+		{
+			ActorLocation = 
+				Player->GetFirstPersonCameraComponent()
+					->GetComponentLocation();
+		}
+		else
+		{
+			ActorLocation = OverlappingActor->GetActorLocation();
+		}
+		const auto bAcrossedPortal = 
+			!IsPointInFrontOfPortal(
+				ActorLocation,
+				GetPortalPlaneLocation(),
+				GetPortalForwardVector());
+
+		if (bAcrossedPortal)
+		{
+			TeleportActor(*OverlappingActor);
+			TeleportedActors.Add(OverlappingActor);
+		}
+	}
+
+	for (auto TeleportedActor : TeleportedActors)
+	{
+		OverlappingActors.Remove(TeleportedActor);
+	}
+}
+
+void APortal::TeleportActor(AActor& Actor)
+{
+	const auto BeforeLocation = Actor.GetActorLocation();
+	const auto BeforeVelocity = Actor.GetVelocity();
+
+	const auto AfterVelocity = 
+		TransformVectorToDestSpace(BeforeVelocity);
+	const auto AfterLocation =
+		TransformPointToDestSpace(BeforeLocation);
+
+	Actor.SetActorLocation(AfterLocation);
+
+	if (auto Player = 
+			Cast<APortalRevisitedCharacter>(&Actor))
+	{
+		DebugHelper::PrintText("Character");
+		auto Controller = Player->GetController();
+		const auto BeforeQuat = 
+			Controller->GetControlRotation().Quaternion();
+		const auto AfterQuat =
+			TransformQuatToDestSpace(BeforeQuat);
+
+		//auto A = 
+		//	static_cast<UPrimitiveComponent*>(Player->GetComponentByClass(UPrimitiveComponent::StaticClass()));
+		//A->SetPhysicsLinearVelocity(AfterVelocity);
+
+		Player->GetMovementComponent()->Velocity = AfterVelocity;
+		//Player->GetCharacterMovement()->AddForce(
+		////	-BeforeVelocity * Player->GetCharacterMovement()->Mass);
+		//Player->GetCharacterMovement()->Velocity = AfterVelocity;
+		//Player->GetCharacterMovement()->UpdateComponentVelocity();
+		Player->GetController()->SetControlRotation(AfterQuat.Rotator());
+		return;
+	}
+	
+	const auto BeforeQuat = Actor.GetActorQuat();
+	const auto AfterQuat =
+		TransformQuatToDestSpace(BeforeQuat);
+
+	Actor.GetRootComponent()->ComponentVelocity = AfterVelocity;
+	Actor.SetActorRotation(AfterQuat);
 }
 
 // Sets default values
@@ -301,6 +385,7 @@ void APortal::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	UpdateCapture();
+	CheckAndTeleportOverlappingActors();
 }
 
 void APortal::OnOverlapBegin(
@@ -335,6 +420,8 @@ void APortal::OnOverlapBegin(
 	}
 
 	OtherComp->SetCollisionProfileName(TEXT(PORTAL_COLLISION_PROFILE_NAME));
+	
+	OverlappingActors.AddUnique(OtherActor);
 }
 
 void APortal::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
@@ -355,6 +442,40 @@ void APortal::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherAct
 	}
 	
 	OtherComp->SetCollisionProfileName(TEXT(STANDARD_COLLISION_PROFILE_NAME));
+	
+	OverlappingActors.Remove(OtherActor);
+}
+
+FVector APortal::TransformVectorToDestSpace(
+	const FVector& Target)
+{
+	return TransformVectorToDestSpace(
+		Target,
+		*this,
+		*LinkedPortal);
+}
+
+FVector APortal::TransformVectorToDestSpace(
+	const FVector& Target,
+	const APortal& SrcPortal,
+	const APortal& DestPortal)
+{
+	const auto SrcForward = SrcPortal.GetPortalForwardVector();
+	const auto SrcRight = SrcPortal.GetPortalRightVector();
+	const auto SrcUp = SrcPortal.GetPortalUpVector();
+	
+	const auto DestForward = -DestPortal.GetPortalForwardVector();
+	const auto DestRight = -DestPortal.GetPortalRightVector();
+	const auto DestUp = DestPortal.GetPortalUpVector();
+
+	return TransformVectorToDestSpace(
+		Target,
+		SrcForward,
+		SrcRight,
+		SrcUp,
+		DestForward,
+		DestRight,
+		DestUp);
 }
 
 FVector APortal::TransformVectorToDestSpace(
@@ -374,6 +495,42 @@ FVector APortal::TransformVectorToDestSpace(
 	return Coordinate.X * DestPortalForward +
 		Coordinate.Y * DestPortalRight +
 		Coordinate.Z * DestPortalUp;
+}
+
+FVector APortal::TransformPointToDestSpace(
+	const FVector& Target)
+{
+	return TransformPointToDestSpace(
+		Target,
+		*this,
+		*LinkedPortal);
+}
+
+FVector APortal::TransformPointToDestSpace(
+	const FVector& Target,
+	const APortal& SrcPortal,
+	const APortal& DestPortal)
+{
+	const auto SrcLocation = SrcPortal.GetPortalPlaneLocation();
+	const auto SrcForward = SrcPortal.GetPortalForwardVector();
+	const auto SrcRight = SrcPortal.GetPortalRightVector();
+	const auto SrcUp = SrcPortal.GetPortalUpVector();
+
+	const auto DestLocation = DestPortal.GetPortalPlaneLocation();
+	const auto DestForward = -DestPortal.GetPortalForwardVector();
+	const auto DestRight = -DestPortal.GetPortalRightVector();
+	const auto DestUp = DestPortal.GetPortalUpVector();
+
+	return TransformPointToDestSpace(
+		Target,
+		SrcLocation,
+		SrcForward,
+		SrcRight,
+		SrcUp,
+		DestLocation,
+		DestForward,
+		DestRight,
+		DestUp);
 }
 
 FVector APortal::TransformPointToDestSpace(
@@ -400,6 +557,31 @@ FVector APortal::TransformPointToDestSpace(
 	);
 	
 	return DestPortalPos + DestToTarget;
+}
+
+FQuat APortal::TransformQuatToDestSpace(
+	const FQuat& Target)
+{
+	return TransformQuatToDestSpace(
+		Target,
+		*this,
+		*LinkedPortal);
+}
+
+FQuat APortal::TransformQuatToDestSpace(
+	const FQuat& Target,
+	const APortal& SrcPortal, 
+	const APortal& DestPortal)
+{
+	const auto SrcQuat = SrcPortal.GetActorQuat();
+	const auto DestUp = DestPortal.GetPortalUpVector();
+	const auto DestQuat = DestPortal.GetActorQuat();
+
+	return TransformQuatToDestSpace(
+		Target,
+		SrcQuat,
+		DestQuat,
+		DestUp);
 }
 
 FQuat APortal::TransformQuatToDestSpace(

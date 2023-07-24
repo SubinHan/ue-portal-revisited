@@ -26,6 +26,7 @@ class PORTALREVISITED_API UPortalGun : public USkeletalMeshComponent
 	using PortalOffset = std::optional<FVector>;
 public:
 	UPortalGun();
+	void LinkPortal();
 
 	/** Sound to play each time we fire */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Gameplay)
