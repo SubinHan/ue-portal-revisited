@@ -13,6 +13,7 @@ class USceneComponent;
 class UCameraComponent;
 class UAnimMontage;
 class USoundBase;
+class UPhysicsHandleComponent;
 
 UCLASS(config=Game)
 class APortalRevisitedCharacter : public ACharacter
@@ -41,6 +42,9 @@ class APortalRevisitedCharacter : public ACharacter
 
 	
 public:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TObjectPtr<UPhysicsHandleComponent> PhysicsHandle;
+
 	APortalRevisitedCharacter();
 
 protected:

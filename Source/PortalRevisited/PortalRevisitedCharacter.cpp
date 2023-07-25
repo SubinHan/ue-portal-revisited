@@ -10,6 +10,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/LocalPlayer.h"
 #include "GameFramework/PlayerController.h"
+#include "PhysicsEngine/PhysicsHandleComponent.h"
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -38,6 +39,8 @@ APortalRevisitedCharacter::APortalRevisitedCharacter()
 	//Mesh1P->SetRelativeRotation(FRotator(0.9f, -19.19f, 5.2f));
 	Mesh1P->SetRelativeLocation(FVector(-30.f, 0.f, -150.f));
 
+	PhysicsHandle = 
+		CreateDefaultSubobject<UPhysicsHandleComponent>("PhysicsHandle");
 }
 
 void APortalRevisitedCharacter::BeginPlay()

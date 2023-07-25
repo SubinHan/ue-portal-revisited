@@ -19,8 +19,11 @@
 #include "Components/ArrowComponent.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "PhysicsEngine/PhysicsHandleComponent.h"
 
 constexpr float PORTAL_GUN_RANGE = 3000.f;
+constexpr float PORTAL_GUN_GRAB_RANGE = 400.f;
+constexpr float PORTAL_GUN_GRAB_OFFSET = 300.f;
 constexpr auto PORTAL_UP_SIZE_HALF = 150.f;
 constexpr auto PORTAL_RIGHT_SIZE_HALF = 100.f;
 
@@ -55,6 +58,9 @@ UPortalGun::UPortalGun()
 	{
 		OrangePortalTexture = OrangePortalTextureAsset.Object;
 	}
+
+	PrimaryComponentTick.bCanEverTick = true;
+	SetTickGroup(ETickingGroup::TG_PrePhysics);
 }
 
 void UPortalGun::LinkPortal()
@@ -88,7 +94,7 @@ void UPortalGun::AttachPortalGun(APortalRevisitedCharacter* TargetCharacter)
 		UE_LOG(Portal, Error, TEXT("Cannot find portal textures.(RT_BluePortal, RT_OrangePortal)"))
 		return;
 	}
-
+	DebugHelper::PrintText("AA");
 	LinkPortal();
 	
 	// Attach the weapon to the First Person Character
@@ -97,20 +103,26 @@ void UPortalGun::AttachPortalGun(APortalRevisitedCharacter* TargetCharacter)
 	
 	// switch bHasRifle so the animation blueprint can switch to another animation set
 	Character->SetHasRifle(true);
-
+	DebugHelper::PrintText("AA");
 	// Set up action bindings
 	if (APlayerController* PlayerController = Cast<APlayerController>(Character->GetController()))
 	{
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
 		{
 			// Set the priority of the mapping to 1, so that it overrides the Jump action with the Fire action when using touch input
-			Subsystem->AddMappingContext(FireMappingContext, 1);
+			Subsystem->AddMappingContext(PortalGunMappingContext, 1);
 		}
 
 		if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerController->InputComponent))
 		{
-			// Fire
-			EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Triggered, this, &UPortalGun::FireBlue);
+			// Fire Blue
+			EnhancedInputComponent->BindAction(FireBlueAction, ETriggerEvent::Triggered, this, &UPortalGun::FireBlue);
+
+			// Fire Orange
+			EnhancedInputComponent->BindAction(FireOrangeAction, ETriggerEvent::Triggered, this, &UPortalGun::FireOrange);
+
+			// Grab
+			EnhancedInputComponent->BindAction(GrabAction, ETriggerEvent::Triggered, this, &UPortalGun::GrabObject);
 		}
 	}
 
@@ -479,22 +491,96 @@ void UPortalGun::FireBlue()
 
 void UPortalGun::FireOrange()
 {
-	throw std::logic_error("Not implemented");
+	return;
+}
+
+void UPortalGun::GrabObject()
+{
+	DebugHelper::PrintText("Grab");
+
+	if (bIsGrabbing)
+	{
+		bIsGrabbing = false;
+
+		Character->PhysicsHandle->ReleaseComponent();
+		return;
+	}
+	
+	auto Camera = Character->GetFirstPersonCameraComponent();
+
+	auto Start = Camera->GetComponentLocation();
+	auto Direction = Camera->GetForwardVector();
+	auto End = Start + Direction * PORTAL_GUN_GRAB_RANGE;
+
+	FCollisionQueryParams CollisionParams;
+	CollisionParams.AddIgnoredActor(Character);
+	CollisionParams.AddIgnoredActor(BluePortal);
+	CollisionParams.AddIgnoredActor(OrangePortal);
+
+	FHitResult HitResult;
+
+	bool bIsHit = GetWorld()->LineTraceSingleByChannel(
+		HitResult,
+		Start,
+		End,
+		ECC_WorldStatic,
+		CollisionParams);
+
+	if (!bIsHit)
+		return;
+
+	const auto NewGrabbedActor = HitResult.GetActor();
+	if(!CanGrab(NewGrabbedActor))
+	{
+		return;	
+	}
+
+
+	if(!HitResult.GetComponent())
+		return;
+
+	Character->PhysicsHandle->GrabComponentAtLocationWithRotation(
+		HitResult.GetComponent(),
+		EName::None,
+		HitResult.GetComponent()->GetComponentLocation(),
+		FRotator(0.0, 0.0, 0.0));
+
+	bIsGrabbing = true;
+	GrabbedActor = NewGrabbedActor;
 }
 
 void UPortalGun::PostInitProperties()
 {
 	Super::PostInitProperties();
-	DebugHelper::PrintText("AA");
-	if (!BluePortal)
-		DebugHelper::PrintText("AC");
-	
-	if (!OrangePortal)
-		DebugHelper::PrintText("AD");
+
 	if (!BluePortal || !OrangePortal)
 		return;
-	DebugHelper::PrintText("AB");
 
 	BluePortal->LinkPortal(OrangePortal);
 	OrangePortal->LinkPortal(BluePortal);
+}
+
+bool UPortalGun::CanGrab(AActor* Actor)
+{
+	return Actor->IsRootComponentMovable();
+}
+
+void UPortalGun::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	if (!bIsGrabbing)
+		return;
+	
+	const auto CameraComponent = Character->GetFirstPersonCameraComponent();
+	const auto CameraLocation = 
+		CameraComponent->GetComponentLocation();
+	const auto CameraDirection = 
+		CameraComponent->GetForwardVector();
+
+	const auto NewLocation =
+		CameraLocation +
+		CameraDirection * PORTAL_GUN_GRAB_OFFSET;
+
+	Character->PhysicsHandle->SetTargetLocation(NewLocation);
 }

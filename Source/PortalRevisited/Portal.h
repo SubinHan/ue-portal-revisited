@@ -47,7 +47,8 @@ public:
 		int32 OtherBodyIndex,
 		bool bFromSweep,
 		const FHitResult& SweepResult);
-	
+	void UnregisterOverlappingActor(AActor* Actor, UPrimitiveComponent* Component);
+
 	UFUNCTION()
 	void OnOverlapEnd(
 		UPrimitiveComponent* OverlappedComp,
@@ -65,6 +66,8 @@ private:
 	uint8 PortalStencilValue;
 
 	TArray<TObjectPtr<AActor>> OverlappingActors;
+	TArray<TObjectPtr<AActor>> IgnoredActors;
+	TMap<uint32, TObjectPtr<AActor>> CloneMap;
 
 protected:
 	// Called when the game starts or when spawned
@@ -73,7 +76,8 @@ protected:
 public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
-	
+	void RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPrimitiveComponent> Component);
+
 	FVector GetPortalUpVector() const;
 	FVector GetPortalRightVector() const;
 	FVector GetPortalForwardVector() const;
@@ -84,6 +88,8 @@ public:
 	uint8 GetPortalCustomStencilValue() const;
 	
 	void SetPortalCustomStencilValue(uint8 NewValue);
+	void AddIgnoredActor(TObjectPtr<AActor> Actor);
+	void RemoveIgnoredActor(TObjectPtr<AActor> Actor);
 
 private:
 	void InitMeshPortalHole();

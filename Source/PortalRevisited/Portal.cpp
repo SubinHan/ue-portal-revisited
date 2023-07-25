@@ -110,8 +110,11 @@ void APortal::InitPortalCamera()
 	PortalCamera->SetRelativeRotation(Rotator);
 
 	PortalCamera->CaptureSource = SCS_FinalColorHDR;
-	PortalCamera->ShowFlags.LocalExposure = false;
-	PortalCamera->ShowFlags.EyeAdaptation = false;
+	PortalCamera->ShowFlags.SetLocalExposure(false);
+	PortalCamera->ShowFlags.SetEyeAdaptation(false);
+	PortalCamera->ShowFlags.SetMotionBlur(false);
+	PortalCamera->ShowFlags.SetBloom(false);
+	PortalCamera->ShowFlags.SetToneCurve(false);
 	PortalCamera->bEnableClipPlane = true;
 	PortalCamera->bCaptureEveryFrame = false;
 	PortalCamera->bCaptureOnMovement = false;
@@ -188,6 +191,16 @@ void APortal::SetPortalCustomStencilValue(uint8 NewValue)
 	PortalInner->SetCustomDepthStencilValue(PortalStencilValue);
 }
 
+void APortal::AddIgnoredActor(TObjectPtr<AActor> Actor)
+{
+	IgnoredActors.AddUnique(Actor);
+}
+
+void APortal::RemoveIgnoredActor(TObjectPtr<AActor> Actor)
+{
+	IgnoredActors.Remove(Actor);
+}
+
 FVector APortal::GetPortalUpVector() const
 {
 	return GetPortalUpVector(GetActorQuat());
@@ -235,7 +248,7 @@ void APortal::UpdateCapture()
 	UpdateCaptureCamera();
 	PortalCamera->ClipPlaneBase = LinkedPortal->GetPortalPlaneLocation();
 	PortalCamera->ClipPlaneNormal = LinkedPortal->GetActorForwardVector();
-	
+
 	PortalCamera->CaptureScene();
 }
 
@@ -287,8 +300,8 @@ void APortal::TeleportActor(AActor& Actor)
 	const auto AfterLocation =
 		TransformPointToDestSpace(BeforeLocation);
 
-	Actor.SetActorLocation(AfterLocation);
-
+	Actor.SetActorLocation(AfterLocation, false, nullptr, ETeleportType::None);
+	 
 	if (auto Player = 
 			Cast<APortalRevisitedCharacter>(&Actor))
 	{
@@ -298,16 +311,8 @@ void APortal::TeleportActor(AActor& Actor)
 			Controller->GetControlRotation().Quaternion();
 		const auto AfterQuat =
 			TransformQuatToDestSpace(BeforeQuat);
-
-		//auto A = 
-		//	static_cast<UPrimitiveComponent*>(Player->GetComponentByClass(UPrimitiveComponent::StaticClass()));
-		//A->SetPhysicsLinearVelocity(AfterVelocity);
-
+		
 		Player->GetMovementComponent()->Velocity = AfterVelocity;
-		//Player->GetCharacterMovement()->AddForce(
-		////	-BeforeVelocity * Player->GetCharacterMovement()->Mass);
-		//Player->GetCharacterMovement()->Velocity = AfterVelocity;
-		//Player->GetCharacterMovement()->UpdateComponentVelocity();
 		Player->GetController()->SetControlRotation(AfterQuat.Rotator());
 		return;
 	}
@@ -388,6 +393,52 @@ void APortal::Tick(float DeltaTime)
 	CheckAndTeleportOverlappingActors();
 }
 
+void APortal::RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPrimitiveComponent> Component)
+{
+	if(IgnoredActors.Contains(Actor))
+		return;
+
+	Component->SetCollisionProfileName(TEXT(PORTAL_COLLISION_PROFILE_NAME));
+	OverlappingActors.AddUnique(Actor);
+
+	DebugHelper::PrintText(Component->GetName());
+	
+	TArray<TObjectPtr<AActor>> ChildActors;
+	Actor->GetAllChildActors(ChildActors);
+
+	TArray<TObjectPtr<USceneComponent>> ChildComponents;
+	Component->GetChildrenComponents(true, ChildComponents);
+
+	auto CloneComponent = DuplicateObject(Component, this, "BB");
+	CloneComponent->GetChildrenComponents(true, ChildComponents);
+
+	for (auto Child : ChildComponents)
+	{
+		DebugHelper::PrintText(Child->GetName());
+	}
+
+	auto SpawnParams = FActorSpawnParameters();
+	SpawnParams.bNoFail = true;
+
+	TObjectPtr<AActor> Clone = GWorld->SpawnActor<AActor>(
+		TransformPointToDestSpace(Actor->GetActorLocation()),
+		TransformQuatToDestSpace(Actor->GetActorRotation().Quaternion()).Rotator(),
+		SpawnParams);
+
+	DebugHelper::PrintVector(TransformPointToDestSpace(Actor->GetActorLocation()));
+	DebugHelper::PrintVector(Clone->GetActorLocation());
+	Clone->SetRootComponent(CloneComponent);
+
+	Clone->SetActorLocation(TransformPointToDestSpace(Actor->GetActorLocation()));
+
+
+	CloneComponent->SetupAttachment(
+		Clone->GetRootComponent(), TEXT("AA"));
+
+	LinkedPortal->AddIgnoredActor(Clone);
+	CloneMap.Add(Actor->GetUniqueID(), Clone);
+}
+
 void APortal::OnOverlapBegin(
 	UPrimitiveComponent* OverlappedComp,
 	AActor* OtherActor, 
@@ -405,27 +456,38 @@ void APortal::OnOverlapBegin(
 	if (!OtherComp)
 		return;
 	
-	if (GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("OverlapBegin"));
-		GEngine->AddOnScreenDebugMessage(
-			-1, 5.f, FColor::Red,
-			TEXT("OtherActor:") + OtherActor->GetName());
-		GEngine->AddOnScreenDebugMessage(
-			-1, 5.f, FColor::Red,
-			TEXT("OverlappedComp:") + OverlappedComp->GetName());
-		GEngine->AddOnScreenDebugMessage(
-			-1, 5.f, FColor::Red,
-			TEXT("OtherComp:") + OtherComp->GetName());
-	}
+	//if (GEngine)
+	//{
+	//	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("OverlapBegin"));
+	//	GEngine->AddOnScreenDebugMessage(
+	//		-1, 5.f, FColor::Red,
+	//		TEXT("OtherActor:") + OtherActor->GetName());
+	//	GEngine->AddOnScreenDebugMessage(
+	//		-1, 5.f, FColor::Red,
+	//		TEXT("OverlappedComp:") + OverlappedComp->GetName());
+	//	GEngine->AddOnScreenDebugMessage(
+	//		-1, 5.f, FColor::Red,
+	//		TEXT("OtherComp:") + OtherComp->GetName());
+	//}
 
-	OtherComp->SetCollisionProfileName(TEXT(PORTAL_COLLISION_PROFILE_NAME));
-	
-	OverlappingActors.AddUnique(OtherActor);
+	RegisterOverlappingActor(OtherActor, OtherComp);
+}
+
+void APortal::UnregisterOverlappingActor(AActor* Actor, UPrimitiveComponent* Component)
+{
+	if(IgnoredActors.Contains(Actor))
+		return;
+
+	Component->SetCollisionProfileName(TEXT(STANDARD_COLLISION_PROFILE_NAME));
+	OverlappingActors.Remove(Actor);
+
+	auto Clone = CloneMap[Actor->GetUniqueID()];
+	LinkedPortal->RemoveIgnoredActor(Clone);
+	GWorld->DestroyActor(Clone);
 }
 
 void APortal::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
-	int32 OtherBodyIndex)
+                           int32 OtherBodyIndex)
 {
 	if (!OtherActor)
 		return;
@@ -436,14 +498,12 @@ void APortal::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherAct
 	if (!OtherComp)
 		return;
 
-	if (GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("OverlapEnd"));
-	}
+	//if (GEngine)
+	//{
+	//	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("OverlapEnd"));
+	//}
 	
-	OtherComp->SetCollisionProfileName(TEXT(STANDARD_COLLISION_PROFILE_NAME));
-	
-	OverlappingActors.Remove(OtherActor);
+	UnregisterOverlappingActor(OtherActor, OtherComp);
 }
 
 FVector APortal::TransformVectorToDestSpace(

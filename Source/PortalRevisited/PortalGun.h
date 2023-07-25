@@ -51,11 +51,20 @@ public:
 
 	/** MappingContext */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
-	TObjectPtr<UInputMappingContext> FireMappingContext;
+	TObjectPtr<UInputMappingContext> PortalGunMappingContext;
 
-	/** Fire Input Action */
+	/** Fire Blue Portal Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
-	TObjectPtr<UInputAction> FireAction;
+	TObjectPtr<UInputAction> FireBlueAction;
+	
+	/** Fire Orange Portal Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> FireOrangeAction;
+
+	/** Grab Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> GrabAction;
+
 
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void AttachPortalGun(APortalRevisitedCharacter* TargetCharacter);
@@ -84,7 +93,17 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void FireOrange();
+
+	UFUNCTION(BlueprintCallable, Category="PortalGun")
+	void GrabObject();
+
 	virtual void PostInitProperties() override;
+	bool CanGrab(AActor* Actor);
+
+	virtual void TickComponent(
+		float DeltaTime,
+		ELevelTick TickType,
+		FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
 	/** The Character holding this weapon*/
@@ -94,4 +113,7 @@ private:
 
 	TArray<TObjectPtr<AStaticMeshActor>> BluePortalPlanes;
 	TArray<TObjectPtr<AStaticMeshActor>> OrangePortalPlanes;
+
+	bool bIsGrabbing;
+	TObjectPtr<AActor> GrabbedActor;
 };
