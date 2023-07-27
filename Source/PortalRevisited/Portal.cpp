@@ -67,6 +67,38 @@ void APortal::InitPortalEnterMask()
 	PortalEnterMask->OnComponentEndOverlap.AddDynamic(this, &APortal::OnOverlapEnd);
 }
 
+void APortal::InitPortalPlane()
+{
+	PortalPlane =
+		CreateDefaultSubobject<UStaticMeshComponent>("PortalPlane");
+	PortalPlane->SetupAttachment(MeshPortalHole);
+	PortalPlane->SetCollisionProfileName("NoCollision");
+
+	// TODO: Hard coded scale
+	PortalPlane->SetRelativeLocation(FVector(0.0f, 0.0f, 53.f));
+	PortalPlane->SetRelativeScale3D(FVector(3.0f, 2.0f, 1.0f));
+
+	Asset<UStaticMesh> PortalPlaneMesh(
+		TEXT("StaticMesh'/Engine/BasicShapes/Plane.Plane'"));
+
+	if (PortalPlaneMesh.Object)
+	{
+		PortalPlane->SetStaticMesh(PortalPlaneMesh.Object);
+	}
+
+	Asset<UMaterial> PortalPlaneMaterial(
+		TEXT("Material'/Game/M_Portal.M_Portal'"));
+
+	if (PortalPlaneMaterial.Object)
+	{
+		PortalPlane->SetMaterial(0, PortalPlaneMaterial.Object);
+	}
+
+	PortalPlane->SetRenderCustomDepth(true);
+	PortalStencilValue = DEFAULT_STENCIL_VALUE;
+	PortalPlane->SetCustomDepthStencilValue(PortalStencilValue);
+}
+
 void APortal::InitPortalInner()
 {
 	PortalInner =
@@ -75,11 +107,11 @@ void APortal::InitPortalInner()
 	PortalInner->SetCollisionProfileName("NoCollision");
 
 	// TODO: Hard coded scale
-	PortalInner->SetRelativeLocation(FVector(0.0f, 0.0f, 43.f));
-	PortalInner->SetRelativeScale3D(FVector(3.0f, 2.0f, 0.2f));
+	PortalInner->SetRelativeLocation(FVector(0.0f, 0.0f, 30.f));
+	PortalInner->SetRelativeScale3D(FVector(3.0f, 2.0f, 0.4f));
 
 	Asset<UStaticMesh> PortalInnerMesh(
-		TEXT("StaticMesh'/Engine/BasicShapes/Cube.Cube'"));
+		TEXT("StaticMesh'/Game/SM_PortalRenderTarget.SM_PortalRenderTarget'"));
 
 	if (PortalInnerMesh.Object)
 	{
@@ -88,7 +120,6 @@ void APortal::InitPortalInner()
 
 	Asset<UMaterial> PortalInnerMaterial(
 		TEXT("Material'/Game/M_Portal.M_Portal'"));
-
 	if (PortalInnerMaterial.Object)
 	{
 		PortalInner->SetMaterial(0, PortalInnerMaterial.Object);
@@ -174,10 +205,7 @@ void APortal::UpdateCaptureCamera()
 
 FVector APortal::GetPortalPlaneLocation() const
 {
-	const auto PortalInnerOffset = 3.0;
-
-	return GetActorLocation() +
-		PortalInnerOffset * GetPortalForwardVector();
+	return PortalPlane->GetComponentLocation();
 }
 
 uint8 APortal::GetPortalCustomStencilValue() const
@@ -189,6 +217,7 @@ void APortal::SetPortalCustomStencilValue(uint8 NewValue)
 {
 	PortalStencilValue = NewValue;
 	PortalInner->SetCustomDepthStencilValue(PortalStencilValue);
+	PortalPlane->SetCustomDepthStencilValue(PortalStencilValue);
 }
 
 void APortal::AddIgnoredActor(TObjectPtr<AActor> Actor)
@@ -338,6 +367,7 @@ APortal::APortal()
 
 	InitMeshPortalHole();
 	InitPortalEnterMask();
+	InitPortalPlane();
 	InitPortalInner();
 	InitPortalCamera();
 

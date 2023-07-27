@@ -31,6 +31,9 @@ public:
 	 */
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
 	TObjectPtr<UCapsuleComponent> PortalEnterMask;
+	
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
+	TObjectPtr<UStaticMeshComponent> PortalPlane;
 
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
 	TObjectPtr<UStaticMeshComponent> PortalInner;
@@ -90,24 +93,12 @@ public:
 	void SetPortalCustomStencilValue(uint8 NewValue);
 	void AddIgnoredActor(TObjectPtr<AActor> Actor);
 	void RemoveIgnoredActor(TObjectPtr<AActor> Actor);
-
-private:
-	void InitMeshPortalHole();
-	void InitPortalEnterMask();
-	void InitPortalInner();
-	void InitPortalCamera();
-
-	void UpdateCaptureCamera();
-	void UpdateCapture();
-	void CheckAndTeleportOverlappingActors();
-	void TeleportActor(AActor& Actor);
-
+	
 	FVector TransformVectorToDestSpace(const FVector& Target);
 	static FVector TransformVectorToDestSpace(
 		const FVector& Target, 
 		const APortal& SrcPortal, 
 		const APortal& DestPortal);
-
 	/**
 	 * Transform the given vector by using given Portals' coordinates.
 	 * [dest portal basis] * [src portal basis]^-1 * [target vector] = [result]
@@ -120,13 +111,11 @@ private:
 		const FVector& DestPortalForward,
 		const FVector& DestPortalRight,
 		const FVector& DestPortalUp);
-
 	FVector TransformPointToDestSpace(const FVector& Target);
 	static FVector TransformPointToDestSpace(
 		const FVector& Target, 
 		const APortal& SrcPortal, 
 		const APortal& DestPortal);
-
 	/**
 	 * Transform the given point by using given Portals' coordinates.
 	 *
@@ -141,13 +130,11 @@ private:
 		const FVector& DestPortalForward,
 		const FVector& DestPortalRight,
 		const FVector& DestPortalUp);
-
 	FQuat TransformQuatToDestSpace(const FQuat& Target);
 	static FQuat TransformQuatToDestSpace(
 		const FQuat& Target, 
 		const APortal& SrcPortal, 
 		const APortal& DestPortal);
-
 	/**
 	 * Transform the given quaternion by using given Portals' quaternion.
 	 * 
@@ -157,11 +144,22 @@ private:
 		const FQuat& SrcPortalQuat,
 		const FQuat& DestPortalQuat,
 		const FVector DestPortalUp);
-
 	static bool IsPointInFrontOfPortal(
 		const FVector& Point,
 		const FVector& PortalPos,
 		const FVector& PortalNormal);
 
+
+private:
+	void InitMeshPortalHole();
+	void InitPortalEnterMask();
+	void InitPortalPlane();
+	void InitPortalInner();
+	void InitPortalCamera();
+
+	void UpdateCaptureCamera();
+	void UpdateCapture();
+	void CheckAndTeleportOverlappingActors();
+	void TeleportActor(AActor& Actor);
 
 };

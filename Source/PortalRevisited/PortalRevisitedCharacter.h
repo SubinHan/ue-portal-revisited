@@ -39,11 +39,8 @@ class APortalRevisitedCharacter : public ACharacter
 	/** Move Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
 	class UInputAction* MoveAction;
-
 	
 public:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	TObjectPtr<UPhysicsHandleComponent> PhysicsHandle;
 
 	APortalRevisitedCharacter();
 

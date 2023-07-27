@@ -93,12 +93,16 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void FireOrange();
+	void StopGrabbing();
+	void StartGrabbing(AActor* NewGrabbedActor);
 
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
-	void GrabObject();
+	void Interact();
 
 	virtual void PostInitProperties() override;
 	bool CanGrab(AActor* Actor);
+	UPrimitiveComponent* GetPrimitiveComponent(TObjectPtr<AActor>);
+	void GrabObject();
 
 	virtual void TickComponent(
 		float DeltaTime,

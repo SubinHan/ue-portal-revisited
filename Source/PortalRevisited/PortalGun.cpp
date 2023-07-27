@@ -23,7 +23,8 @@
 
 constexpr float PORTAL_GUN_RANGE = 3000.f;
 constexpr float PORTAL_GUN_GRAB_RANGE = 400.f;
-constexpr float PORTAL_GUN_GRAB_OFFSET = 300.f;
+constexpr float PORTAL_GUN_GRAB_OFFSET = 200.f;
+constexpr float PORTAL_GUN_GRAB_FORCE_MULTIPLIER = 5.f;
 constexpr auto PORTAL_UP_SIZE_HALF = 150.f;
 constexpr auto PORTAL_RIGHT_SIZE_HALF = 100.f;
 
@@ -122,7 +123,7 @@ void UPortalGun::AttachPortalGun(APortalRevisitedCharacter* TargetCharacter)
 			EnhancedInputComponent->BindAction(FireOrangeAction, ETriggerEvent::Triggered, this, &UPortalGun::FireOrange);
 
 			// Grab
-			EnhancedInputComponent->BindAction(GrabAction, ETriggerEvent::Triggered, this, &UPortalGun::GrabObject);
+			EnhancedInputComponent->BindAction(GrabAction, ETriggerEvent::Triggered, this, &UPortalGun::Interact);
 		}
 	}
 
@@ -494,23 +495,37 @@ void UPortalGun::FireOrange()
 	return;
 }
 
-void UPortalGun::GrabObject()
+void UPortalGun::StopGrabbing()
+{
+	auto PrimitiveComp = GetPrimitiveComponent(GrabbedActor);
+	PrimitiveComp->SetPhysicsLinearVelocity(FVector(0.0));
+
+	bIsGrabbing = false;
+	GrabbedActor = nullptr;
+}
+
+void UPortalGun::StartGrabbing(AActor* const NewGrabbedActor)
+{
+	bIsGrabbing = true;
+	GrabbedActor = NewGrabbedActor;
+}
+
+void UPortalGun::Interact()
 {
 	DebugHelper::PrintText("Grab");
 
 	if (bIsGrabbing)
 	{
-		bIsGrabbing = false;
-
-		Character->PhysicsHandle->ReleaseComponent();
+		StopGrabbing();
+		// TODO: Stop Tick
 		return;
 	}
 	
 	auto Camera = Character->GetFirstPersonCameraComponent();
 
-	auto Start = Camera->GetComponentLocation();
-	auto Direction = Camera->GetForwardVector();
-	auto End = Start + Direction * PORTAL_GUN_GRAB_RANGE;
+	const auto Start = Camera->GetComponentLocation();
+	const auto Direction = Camera->GetForwardVector();
+	const auto End = Start + Direction * PORTAL_GUN_GRAB_RANGE;
 
 	FCollisionQueryParams CollisionParams;
 	CollisionParams.AddIgnoredActor(Character);
@@ -523,11 +538,31 @@ void UPortalGun::GrabObject()
 		HitResult,
 		Start,
 		End,
-		ECC_WorldStatic,
+		ECC_Visibility,
 		CollisionParams);
 
 	if (!bIsHit)
 		return;
+
+	//if (APortal Portal = IsPortal(HitResult.GetActor()))
+	//{
+	//	const auto ImpactPoint = HitResult.ImpactPoint;
+	//	const auto RemainRange =
+	//		(End - ImpactPoint).Length();
+
+	//	const auto PortalStart = 
+	//		Portal.TransformPointToDestSpace(ImpactPoint);
+	//	const auto PortalDirection =
+	//		Portal.TransformVectorToDestSpace(Direction);
+	//	const auto PortalEnd =
+	//		PortalStart + PortalDirection * RemainRange;
+
+	//	GetWorld()->LineTraceSingleByChannel(
+	//		HitResult,
+	//		PortalStart,
+	//		PortalEnd,
+	//		ECC_World)
+	//}
 
 	const auto NewGrabbedActor = HitResult.GetActor();
 	if(!CanGrab(NewGrabbedActor))
@@ -535,18 +570,11 @@ void UPortalGun::GrabObject()
 		return;	
 	}
 
-
 	if(!HitResult.GetComponent())
 		return;
 
-	Character->PhysicsHandle->GrabComponentAtLocationWithRotation(
-		HitResult.GetComponent(),
-		EName::None,
-		HitResult.GetComponent()->GetComponentLocation(),
-		FRotator(0.0, 0.0, 0.0));
-
-	bIsGrabbing = true;
-	GrabbedActor = NewGrabbedActor;
+	// TODO: Start Tick
+	StartGrabbing(NewGrabbedActor);
 }
 
 void UPortalGun::PostInitProperties()
@@ -565,10 +593,15 @@ bool UPortalGun::CanGrab(AActor* Actor)
 	return Actor->IsRootComponentMovable();
 }
 
-void UPortalGun::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+UPrimitiveComponent* UPortalGun::GetPrimitiveComponent(TObjectPtr<AActor> Actor)
 {
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	return static_cast<UPrimitiveComponent*>(
+		Actor->GetComponentByClass(
+			UPrimitiveComponent::StaticClass()));
+}
 
+void UPortalGun::GrabObject()
+{
 	if (!bIsGrabbing)
 		return;
 	
@@ -578,9 +611,33 @@ void UPortalGun::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompo
 	const auto CameraDirection = 
 		CameraComponent->GetForwardVector();
 
-	const auto NewLocation =
+	const auto TargetLocation =
 		CameraLocation +
 		CameraDirection * PORTAL_GUN_GRAB_OFFSET;
+	const auto CurrentLocation = GrabbedActor->GetActorLocation();
 
-	Character->PhysicsHandle->SetTargetLocation(NewLocation);
+	auto Direction = TargetLocation - CurrentLocation;
+	auto Length = Direction.Length();
+	Direction.Normalize();
+
+	if (Length > PORTAL_GUN_GRAB_OFFSET * 2.0f)
+	{
+		StopGrabbing();
+		return;
+	}
+
+	auto PrimitiveComp = GetPrimitiveComponent(GrabbedActor);
+
+	const auto Velocity =
+		Direction * Length * PORTAL_GUN_GRAB_FORCE_MULTIPLIER;
+
+	PrimitiveComp->SetAllPhysicsLinearVelocity(Velocity);
+	PrimitiveComp->SetAllPhysicsAngularVelocityInDegrees(FVector(0.0));
+}
+
+void UPortalGun::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	GrabObject();
 }
