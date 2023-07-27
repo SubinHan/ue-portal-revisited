@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include "CoreMinimal.h"
 #include "Engine/StaticMeshActor.h"
 #include "Portal.generated.h"
@@ -9,8 +11,9 @@
 class UStaticMeshComponent;
 class UCapsuleComponent;
 class UArrowComponent;
+class UPortalGun;
 
-DECLARE_LOG_CATEGORY_EXTERN(Portal, Error, Error);
+DECLARE_LOG_CATEGORY_EXTERN(Portal, Log, All);
 
 UCLASS()
 class PORTALREVISITED_API APortal : public AStaticMeshActor
@@ -61,7 +64,8 @@ public:
 	// Sets default values for this actor's properties
 	APortal();
 
-	void LinkPortal(TObjectPtr<APortal> NewTarget);
+	void LinkPortals(TObjectPtr<APortal> NewTarget);
+	void RegisterPortalGun(TObjectPtr<UPortalGun> NewPortalGun);
 	void SetPortalTexture(TObjectPtr<UTextureRenderTarget2D> NewTexture);
 
 private:
@@ -71,6 +75,7 @@ private:
 	TArray<TObjectPtr<AActor>> OverlappingActors;
 	TArray<TObjectPtr<AActor>> IgnoredActors;
 	TMap<uint32, TObjectPtr<AActor>> CloneMap;
+	TObjectPtr<UPortalGun> PortalGun;
 
 protected:
 	// Called when the game starts or when spawned
@@ -148,7 +153,8 @@ public:
 		const FVector& Point,
 		const FVector& PortalPos,
 		const FVector& PortalNormal);
-
+	
+	static std::optional<TObjectPtr<APortal>> CastPortal(AActor* Actor);
 
 private:
 	void InitMeshPortalHole();

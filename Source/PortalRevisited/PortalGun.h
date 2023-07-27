@@ -26,7 +26,7 @@ class PORTALREVISITED_API UPortalGun : public USkeletalMeshComponent
 	using PortalOffset = std::optional<FVector>;
 public:
 	UPortalGun();
-	void LinkPortal();
+	void LinkPortals();
 
 	/** Sound to play each time we fire */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Gameplay)
@@ -65,7 +65,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> GrabAction;
 
-
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void AttachPortalGun(APortalRevisitedCharacter* TargetCharacter);
 	FQuat CalculatePortalRotation(const FVector& ImpactNormal, const APortal& TargetPortal) const;
@@ -95,14 +94,19 @@ public:
 	void FireOrange();
 	void StopGrabbing();
 	void StartGrabbing(AActor* NewGrabbedActor);
-
+	
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void Interact();
 
 	virtual void PostInitProperties() override;
 	bool CanGrab(AActor* Actor);
 	UPrimitiveComponent* GetPrimitiveComponent(TObjectPtr<AActor>);
-	void GrabObject();
+	std::optional<TObjectPtr<APortal>> GetPortalInFrontOf();
+	void ForceGrabbedObject();
+
+	void OnActorPassedPortal(
+		TObjectPtr<APortal> PassedPortal,
+		TObjectPtr<AActor> PassingActor);
 
 	virtual void TickComponent(
 		float DeltaTime,
@@ -119,5 +123,6 @@ private:
 	TArray<TObjectPtr<AStaticMeshActor>> OrangePortalPlanes;
 
 	bool bIsGrabbing;
+	bool bIsGrabbedObjectAcrossedPortal;
 	TObjectPtr<AActor> GrabbedActor;
 };

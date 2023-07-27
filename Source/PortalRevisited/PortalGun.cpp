@@ -64,16 +64,22 @@ UPortalGun::UPortalGun()
 	SetTickGroup(ETickingGroup::TG_PrePhysics);
 }
 
-void UPortalGun::LinkPortal()
+void UPortalGun::LinkPortals()
 {
-	BluePortal->LinkPortal(OrangePortal);
-	OrangePortal->LinkPortal(BluePortal);
+	BluePortal->LinkPortals(OrangePortal);
+	OrangePortal->LinkPortals(BluePortal);
+
+	BluePortal->RegisterPortalGun(this);
+	OrangePortal->RegisterPortalGun(this);
 
 	BluePortal->SetPortalTexture(BluePortalTexture);
 	OrangePortal->SetPortalTexture(OrangePortalTexture);
 
 	BluePortal->SetPortalCustomStencilValue(1);
 	OrangePortal->SetPortalCustomStencilValue(2);
+
+	PrimaryComponentTick.AddPrerequisite(this, BluePortal->PrimaryActorTick);
+	PrimaryComponentTick.AddPrerequisite(this, OrangePortal->PrimaryActorTick);
 }
 
 void UPortalGun::AttachPortalGun(APortalRevisitedCharacter* TargetCharacter)
@@ -96,7 +102,7 @@ void UPortalGun::AttachPortalGun(APortalRevisitedCharacter* TargetCharacter)
 		return;
 	}
 	DebugHelper::PrintText("AA");
-	LinkPortal();
+	LinkPortals();
 	
 	// Attach the weapon to the First Person Character
 	FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, true);
@@ -512,7 +518,7 @@ void UPortalGun::StartGrabbing(AActor* const NewGrabbedActor)
 
 void UPortalGun::Interact()
 {
-	DebugHelper::PrintText("Grab");
+	UE_LOG(Portal, Log, TEXT("Try interact"));
 
 	if (bIsGrabbing)
 	{
@@ -529,40 +535,58 @@ void UPortalGun::Interact()
 
 	FCollisionQueryParams CollisionParams;
 	CollisionParams.AddIgnoredActor(Character);
-	CollisionParams.AddIgnoredActor(BluePortal);
-	CollisionParams.AddIgnoredActor(OrangePortal);
 
 	FHitResult HitResult;
 
-	bool bIsHit = GetWorld()->LineTraceSingleByChannel(
+	auto bIsHit = GetWorld()->LineTraceSingleByChannel(
 		HitResult,
 		Start,
 		End,
-		ECC_Visibility,
+		ECC_GameTraceChannel3,
 		CollisionParams);
+
+	DebugHelper::DrawLine(Start, Direction);
 
 	if (!bIsHit)
 		return;
 
-	//if (APortal Portal = IsPortal(HitResult.GetActor()))
-	//{
-	//	const auto ImpactPoint = HitResult.ImpactPoint;
-	//	const auto RemainRange =
-	//		(End - ImpactPoint).Length();
+	bIsGrabbedObjectAcrossedPortal = false;
 
-	//	const auto PortalStart = 
-	//		Portal.TransformPointToDestSpace(ImpactPoint);
-	//	const auto PortalDirection =
-	//		Portal.TransformVectorToDestSpace(Direction);
-	//	const auto PortalEnd =
-	//		PortalStart + PortalDirection * RemainRange;
+	if (auto PortalOpt = APortal::CastPortal(HitResult.GetActor()))
+	{
+		DebugHelper::PrintText("Hit Portal");
+		auto PortalActor = *PortalOpt;
 
-	//	GetWorld()->LineTraceSingleByChannel(
-	//		HitResult,
-	//		PortalStart,
-	//		PortalEnd,
-	//		ECC_World)
-	//}
+		const auto ImpactPoint = HitResult.ImpactPoint;
+		const auto RemainRange =
+			(End - ImpactPoint).Length();
+
+		const auto PortalDirection =
+			PortalActor->TransformVectorToDestSpace(Direction);
+		const auto PortalStart = 
+			PortalActor->TransformPointToDestSpace(ImpactPoint) +
+			PortalDirection * 50.0f;
+		const auto PortalEnd =
+			PortalStart + PortalDirection * RemainRange;
+		
+		DebugHelper::DrawLine(PortalStart, PortalDirection);
+
+		CollisionParams.AddIgnoredActor(BluePortal);
+		CollisionParams.AddIgnoredActor(OrangePortal);
+		
+		bIsHit = GetWorld()->LineTraceSingleByChannel(
+			HitResult,
+			PortalStart,
+			PortalEnd,
+			ECC_GameTraceChannel3,
+			CollisionParams);
+	
+		if (!bIsHit)
+			return;
+		
+		UE_LOG(Portal, Log, TEXT("Try grab in the opposite space."));
+		bIsGrabbedObjectAcrossedPortal = true;
+	}
 
 	const auto NewGrabbedActor = HitResult.GetActor();
 	if(!CanGrab(NewGrabbedActor))
@@ -584,8 +608,8 @@ void UPortalGun::PostInitProperties()
 	if (!BluePortal || !OrangePortal)
 		return;
 
-	BluePortal->LinkPortal(OrangePortal);
-	OrangePortal->LinkPortal(BluePortal);
+	BluePortal->LinkPortals(OrangePortal);
+	OrangePortal->LinkPortals(BluePortal);
 }
 
 bool UPortalGun::CanGrab(AActor* Actor)
@@ -600,7 +624,40 @@ UPrimitiveComponent* UPortalGun::GetPrimitiveComponent(TObjectPtr<AActor> Actor)
 			UPrimitiveComponent::StaticClass()));
 }
 
-void UPortalGun::GrabObject()
+std::optional<TObjectPtr<APortal>> UPortalGun::GetPortalInFrontOf()
+{
+	const auto CameraComponent = Character->GetFirstPersonCameraComponent();
+	const auto Start = 
+		CameraComponent->GetComponentLocation();
+	const auto Direction = 
+		CameraComponent->GetForwardVector();
+	const auto End = Start + Direction * PORTAL_GUN_GRAB_RANGE;
+	
+	FCollisionQueryParams CollisionParams;
+	CollisionParams.AddIgnoredActor(Character);
+
+	TArray<FHitResult> HitResults;
+	
+	GetWorld()->LineTraceMultiByChannel(
+		HitResults,
+		Start,
+		End,
+		ECC_GameTraceChannel3,
+		CollisionParams);
+
+	for (auto HitResult : HitResults)
+	{
+		if(auto PortalOpt = 
+			APortal::CastPortal(HitResult.GetActor()))
+		{
+			return *PortalOpt;
+		}
+	}
+
+	return std::nullopt;
+}
+
+void UPortalGun::ForceGrabbedObject()
 {
 	if (!bIsGrabbing)
 		return;
@@ -611,10 +668,28 @@ void UPortalGun::GrabObject()
 	const auto CameraDirection = 
 		CameraComponent->GetForwardVector();
 
-	const auto TargetLocation =
+	auto TargetLocation =
 		CameraLocation +
 		CameraDirection * PORTAL_GUN_GRAB_OFFSET;
-	const auto CurrentLocation = GrabbedActor->GetActorLocation();
+	auto CurrentLocation = GrabbedActor->GetActorLocation();
+	
+	if (bIsGrabbedObjectAcrossedPortal)
+	{
+		if (auto PortalOpt = GetPortalInFrontOf())
+		{
+			const auto& PortalInFront = *PortalOpt;
+			TargetLocation =
+				PortalInFront->TransformPointToDestSpace(TargetLocation);
+		}
+		else
+		{
+			// Stop grabbing if the object is opposite space and
+			// the character cannot see the object.
+			UE_LOG(Portal, Log, TEXT("Cannot see object through portal: Cancel grab"));
+			StopGrabbing();
+			return;
+		}
+	}
 
 	auto Direction = TargetLocation - CurrentLocation;
 	auto Length = Direction.Length();
@@ -622,9 +697,14 @@ void UPortalGun::GrabObject()
 
 	if (Length > PORTAL_GUN_GRAB_OFFSET * 2.0f)
 	{
+		// Stop grabbing if the object is too far.
+		UE_LOG(Portal, Log, TEXT("Object is too far: Cancel grab."));
+		UE_LOG(Portal, Log, TEXT("The grabbed actor location was: %s"), *CurrentLocation.ToString());
+		UE_LOG(Portal, Log, TEXT("The location to move the grabbed actor was: %s"), *TargetLocation.ToString());
 		StopGrabbing();
 		return;
 	}
+
 
 	auto PrimitiveComp = GetPrimitiveComponent(GrabbedActor);
 
@@ -632,12 +712,32 @@ void UPortalGun::GrabObject()
 		Direction * Length * PORTAL_GUN_GRAB_FORCE_MULTIPLIER;
 
 	PrimitiveComp->SetAllPhysicsLinearVelocity(Velocity);
-	PrimitiveComp->SetAllPhysicsAngularVelocityInDegrees(FVector(0.0));
+	PrimitiveComp->SetAllPhysicsAngularVelocityInDegrees(
+		FVector(0.0));
+}
+
+void UPortalGun::OnActorPassedPortal(
+	TObjectPtr<APortal> PassedPortal, 
+	TObjectPtr<AActor> PassingActor)
+{
+	if(!bIsGrabbing)
+		return;
+
+	UE_LOG(Portal, Log, TEXT("The grabbed object acrossed the portal"));
+	if (PassingActor->GetUniqueID() == Character->GetUniqueID())
+	{
+		bIsGrabbedObjectAcrossedPortal = !bIsGrabbedObjectAcrossedPortal;
+	}
+
+	if (PassingActor->GetUniqueID() == GrabbedActor->GetUniqueID())
+	{
+		bIsGrabbedObjectAcrossedPortal = !bIsGrabbedObjectAcrossedPortal;
+	}
 }
 
 void UPortalGun::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	GrabObject();
+	ForceGrabbedObject();
 }

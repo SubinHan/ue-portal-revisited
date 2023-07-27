@@ -2,9 +2,11 @@
 
 
 #include "Portal.h"
+
 #include "Private/DebugHelper.h"
 #include <stdexcept>
 
+#include "PortalGun.h"
 #include "PortalRevisitedCharacter.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -285,8 +287,9 @@ void APortal::CheckAndTeleportOverlappingActors()
 {
 	TArray<TObjectPtr<AActor>> TeleportedActors;
 
-	for (auto OverlappingActor : OverlappingActors)
+	for (int i = 0; i < OverlappingActors.Num(); ++i)
 	{
+		auto OverlappingActor = OverlappingActors[i];
 		FVector ActorLocation;
 
 		if (auto Player = 
@@ -309,13 +312,11 @@ void APortal::CheckAndTeleportOverlappingActors()
 		if (bAcrossedPortal)
 		{
 			TeleportActor(*OverlappingActor);
-			TeleportedActors.Add(OverlappingActor);
+			PortalGun->OnActorPassedPortal(this, OverlappingActor);
+			return;
+			// Teleport only single actor in a tick
+			// to prevent side effects from changing array.
 		}
-	}
-
-	for (auto TeleportedActor : TeleportedActors)
-	{
-		OverlappingActors.Remove(TeleportedActor);
 	}
 }
 
@@ -334,7 +335,7 @@ void APortal::TeleportActor(AActor& Actor)
 	if (auto Player = 
 			Cast<APortalRevisitedCharacter>(&Actor))
 	{
-		DebugHelper::PrintText("Character");
+		UE_LOG(Portal, Log, TEXT("The character teleported."));
 		auto Controller = Player->GetController();
 		const auto BeforeQuat = 
 			Controller->GetControlRotation().Quaternion();
@@ -371,10 +372,10 @@ APortal::APortal()
 	InitPortalInner();
 	InitPortalCamera();
 
-	DebugHelper::PrintText(L"PortalCreated");
+	UE_LOG(Portal, Log, TEXT("Portal created."));
 }
 
-void APortal::LinkPortal(TObjectPtr<APortal> NewTarget)
+void APortal::LinkPortals(TObjectPtr<APortal> NewTarget)
 {
 	if (NewTarget.Get() == this)
 	{
@@ -384,6 +385,11 @@ void APortal::LinkPortal(TObjectPtr<APortal> NewTarget)
 	
 	SetTickGroup(TG_PostUpdateWork);
 	this->LinkedPortal = NewTarget;
+}
+
+void APortal::RegisterPortalGun(TObjectPtr<UPortalGun> NewPortalGun)
+{
+	PortalGun = NewPortalGun;
 }
 
 void APortal::SetPortalTexture(TObjectPtr<UTextureRenderTarget2D> NewTexture)
@@ -489,16 +495,9 @@ void APortal::OnOverlapBegin(
 	
 	if (GEngine)
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("OverlapBegin"));
-		GEngine->AddOnScreenDebugMessage(
-			-1, 5.f, FColor::Red,
-			TEXT("OtherActor:") + OtherActor->GetName());
-		GEngine->AddOnScreenDebugMessage(
-			-1, 5.f, FColor::Red,
-			TEXT("OverlappedComp:") + OverlappedComp->GetName());
-		GEngine->AddOnScreenDebugMessage(
-			-1, 5.f, FColor::Red,
-			TEXT("OtherComp:") + OtherComp->GetName());
+		UE_LOG(Portal, Log, TEXT("Overlap begin: OtherActor is %s"), *OtherActor->GetName());
+		UE_LOG(Portal, Log, TEXT("Overlap begin: OverlappedComp is %s"), *OverlappedComp->GetName());
+		UE_LOG(Portal, Log, TEXT("Overlap begin: OtherComp is %s"), *OtherComp->GetName());
 	}
 
 	RegisterOverlappingActor(OtherActor, OtherComp);
@@ -695,5 +694,15 @@ bool APortal::IsPointInFrontOfPortal(const FVector& Point, const FVector& Portal
 {
 	const FVector PointToPortal = PortalPos - Point;
 	return FVector::DotProduct(PointToPortal, PortalNormal) < 0.0;
+}
+
+std::optional<TObjectPtr<APortal>> APortal::CastPortal(AActor* Actor)
+{
+	if(auto Casted = Cast<APortal>(Actor))
+	{
+		return Casted;
+	}
+	UE_LOG(Portal, Log, TEXT("Cast to Portal from %s: failed"), *Actor->GetClass()->GetName());
+	return std::nullopt;
 }
 
