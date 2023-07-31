@@ -8,6 +8,9 @@
 #include "Engine/StaticMeshActor.h"
 #include "Portal.generated.h"
 
+#define PORTAL_COLLISION_PROFILE_NAME "Pawn_Hole"
+#define STANDARD_COLLISION_PROFILE_NAME "Pawn"
+
 class UStaticMeshComponent;
 class UCapsuleComponent;
 class UArrowComponent;
@@ -94,6 +97,8 @@ public:
 	FVector GetPortalForwardVector(const FQuat& PortalRotation) const;
 	FVector GetPortalPlaneLocation() const;
 	uint8 GetPortalCustomStencilValue() const;
+
+	TObjectPtr<APortal> GetLink() const;
 	
 	void SetPortalCustomStencilValue(uint8 NewValue);
 	void AddIgnoredActor(TObjectPtr<AActor> Actor);

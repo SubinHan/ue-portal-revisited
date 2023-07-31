@@ -17,8 +17,10 @@
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/ArrowComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "Kismet/KismetMathLibrary.h"
 #include "PhysicsEngine/PhysicsHandleComponent.h"
 
 constexpr float PORTAL_GUN_RANGE = 3000.f;
@@ -27,6 +29,11 @@ constexpr float PORTAL_GUN_GRAB_OFFSET = 200.f;
 constexpr float PORTAL_GUN_GRAB_FORCE_MULTIPLIER = 5.f;
 constexpr auto PORTAL_UP_SIZE_HALF = 150.f;
 constexpr auto PORTAL_RIGHT_SIZE_HALF = 100.f;
+
+// OverlapAllDynamic Preset blocks ECC_GameTraceChannel3,
+// so it can uses also to query if there is a portal or not.
+constexpr auto PORTAL_QUERY = 
+	ECollisionChannel::ECC_GameTraceChannel3;
 
 UPortalGun::UPortalGun()
 	: USkeletalMeshComponent()
@@ -213,8 +220,10 @@ void UPortalGun::DestroyAllPlanesSpawnedBefore()
 	}
 }
 
-void UPortalGun::SpawnPlanesAroundPortal()
+void UPortalGun::SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal)
 {
+	UE_LOG(Portal, Log, TEXT("Spawn planes in front of the portal."))
+
 	DestroyAllPlanesSpawnedBefore();
 
 	UWorld* const World = GetWorld();
@@ -224,29 +233,97 @@ void UPortalGun::SpawnPlanesAroundPortal()
 	constexpr int NUM_PLANES_X = 5;
 	constexpr float PLANE_SIZE_RATIO = 1.0f;
 	
-	const FVector PortalNormal = BluePortal->GetActorForwardVector();
-	const FVector PortalUp = BluePortal->GetActorUpVector();
-	const FVector PortalRight = BluePortal->GetActorRightVector();
-	
-	const FRotator SpawnRotation = BluePortal->GetActorRotation();
-	const FVector SpawnLocation = BluePortal->GetActorLocation();
+	const auto PortalForward = TargetPortal->GetActorForwardVector();
+	const auto PortalRight = TargetPortal->GetActorRightVector();
+	const auto PortalUp = TargetPortal->GetActorUpVector();
+	const auto PortalLocation = TargetPortal->GetActorLocation();
+	const auto PortalRotation = TargetPortal->GetActorRotation();
 
-	FActorSpawnParameters ActorSpawnParams;
-	ActorSpawnParams.SpawnCollisionHandlingOverride =
-		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	const auto PortalFront =
+		PortalLocation + PortalForward * 50.0f;
+	const auto PortalDown = -PortalUp;
 
-	auto SpawnedPlane = World->SpawnActor<AStaticMeshActor>(
-		SpawnLocation,
-		SpawnRotation,
-		ActorSpawnParams);
-	
-	if(!SpawnedPlane)
+	FCollisionQueryParams CollisionParams;
+	CollisionParams.AddIgnoredActor(Character);
+	CollisionParams.AddIgnoredActor(TargetPortal);
+
+	TArray<FHitResult> HitResults;
+
+	const auto Start = PortalFront;
+	const auto End =
+		PortalFront + PortalDown * PORTAL_UP_SIZE_HALF * 2.0;
+
+	auto bIsBlocked = GetWorld()->LineTraceMultiByChannel(
+		HitResults,
+		Start,
+		End,
+		PORTAL_QUERY,
+		CollisionParams);
+
+	auto bIsHitNothing = HitResults.IsEmpty();
+
+	if (bIsHitNothing)
+	{
+		UE_LOG(Portal, Log, TEXT("There is no ground in front of the portal."))
 		return;
+	}
 
-	SpawnedPlane->SetMobility(EComponentMobility::Stationary);
-	SpawnedPlane->GetStaticMeshComponent()->SetStaticMesh(PlaneMesh);
+	// If there is a portal, do not block the portal entrance.
+	for (auto HitResult : HitResults)
+	{
+		const auto Actor = HitResult.GetActor();
+		if(	APortal::CastPortal(Actor))
+		{
+			UE_LOG(Portal, Log, TEXT("There is a portal in front of the portal."))
+			return;
+		}
+	}
 
-	BluePortalPlanes.Add(SpawnedPlane);
+	UE_LOG(Portal, Log, TEXT("Found %d actors in front of the protal"), HitResults.Num())
+	for (auto HitResult : HitResults)
+	{
+		// If the actor is movable, it is may a cube, so continue.
+		if (HitResult.GetActor()->IsRootComponentMovable())
+		{
+			UE_LOG(Portal, Log, TEXT("Found a movable actor in front of the portal, but ignore it."));
+			continue;
+		}
+		UE_LOG(Portal, Log, TEXT("Found a static actor in front of the portal, try spawn a plane"));
+
+		const auto SpawnLocation = HitResult.ImpactPoint;
+		const auto PlaneNormal = HitResult.ImpactNormal;
+		const auto PlaneU =
+			(PortalForward - PlaneNormal.Dot(PortalForward))
+				.GetSafeNormal();
+		const auto PlaneV = PlaneNormal.Cross(PlaneU).GetSafeNormal();
+		const auto SpawnRotation =
+			UKismetMathLibrary::MakeRotationFromAxes(
+				PlaneU,
+				PlaneV,
+				PlaneNormal);
+		
+		FActorSpawnParameters ActorSpawnParams;
+		ActorSpawnParams.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		auto SpawnedPlane = World->SpawnActor<AStaticMeshActor>(
+			SpawnLocation,
+			SpawnRotation,
+			ActorSpawnParams);
+		
+		if(!SpawnedPlane)
+			return;
+
+		SpawnedPlane->SetMobility(EComponentMobility::Stationary);
+		SpawnedPlane->GetStaticMeshComponent()->SetStaticMesh(PlaneMesh);
+		auto PrimitiveComp = 
+			Cast<UPrimitiveComponent>(SpawnedPlane->GetRootComponent());
+		PrimitiveComp->SetCollisionProfileName(PORTAL_COLLISION_PROFILE_NAME);
+
+		BluePortalPlanes.Add(SpawnedPlane);
+
+		UE_LOG(Portal, Log, TEXT("The plane spawned on the ground."))
+	}
 }
 
 FVector UPortalGun::CalculateOffset(
@@ -493,7 +570,7 @@ void UPortalGun::FireBlue()
 	BluePortal->SetActorLocation(PortalPoint->first);
 	BluePortal->SetActorRotation(PortalPoint->second);
 	
-	//SpawnPlanesAroundPortal();
+	SpawnPlanesAroundPortal(BluePortal);
 }
 
 void UPortalGun::FireOrange()
@@ -518,14 +595,15 @@ void UPortalGun::StartGrabbing(AActor* const NewGrabbedActor)
 
 void UPortalGun::Interact()
 {
-	UE_LOG(Portal, Log, TEXT("Try interact"));
-
 	if (bIsGrabbing)
 	{
+		UE_LOG(Portal, Log, TEXT("Stop grabbing"));
 		StopGrabbing();
 		// TODO: Stop Tick
 		return;
 	}
+
+	UE_LOG(Portal, Log, TEXT("Try interact"));
 	
 	auto Camera = Character->GetFirstPersonCameraComponent();
 
@@ -536,66 +614,97 @@ void UPortalGun::Interact()
 	FCollisionQueryParams CollisionParams;
 	CollisionParams.AddIgnoredActor(Character);
 
-	FHitResult HitResult;
+	FCollisionResponseParams ResponseParams;
 
-	auto bIsHit = GetWorld()->LineTraceSingleByChannel(
-		HitResult,
+	TArray<FHitResult> HitResults;
+
+	auto bIsBlocked = GetWorld()->LineTraceMultiByChannel(
+		HitResults,
 		Start,
 		End,
-		ECC_GameTraceChannel3,
+		PORTAL_QUERY,
 		CollisionParams);
 
-	DebugHelper::DrawLine(Start, Direction);
+	auto bNothingToInteract = HitResults.IsEmpty();
 
-	if (!bIsHit)
+	if (bNothingToInteract)
+	{
+		UE_LOG(Portal, Log, TEXT("Nothing to interact"));
 		return;
+	}
 
+	auto HitResult = HitResults[0];
 	bIsGrabbedObjectAcrossedPortal = false;
 
 	if (auto PortalOpt = APortal::CastPortal(HitResult.GetActor()))
 	{
-		DebugHelper::PrintText("Hit Portal");
+		UE_LOG(Portal, Log, TEXT("Hit Portal, try grab beyond the opposite space"));
 		auto PortalActor = *PortalOpt;
 
 		const auto ImpactPoint = HitResult.ImpactPoint;
 		const auto RemainRange =
 			(End - ImpactPoint).Length();
 
-		const auto PortalDirection =
+		const auto OppositeDirection =
 			PortalActor->TransformVectorToDestSpace(Direction);
-		const auto PortalStart = 
-			PortalActor->TransformPointToDestSpace(ImpactPoint) +
-			PortalDirection * 50.0f;
-		const auto PortalEnd =
-			PortalStart + PortalDirection * RemainRange;
+
+		const auto OppositePortalForward =
+			PortalActor->GetLink()->GetPortalForwardVector();
+
+		DebugHelper::PrintVector(PortalActor->GetPortalForwardVector());
+		DebugHelper::PrintVector(OppositePortalForward);
+
+		// We should move start point little because
+		// prevent to hit the wall mesh.
+		constexpr auto ForwardOffset = 50.f;
+		const auto DirectionDotForward =
+			OppositeDirection.Dot(OppositePortalForward);
+
+		const auto StartOffset =
+			ForwardOffset / DirectionDotForward;
 		
-		DebugHelper::DrawLine(PortalStart, PortalDirection);
+		DebugHelper::PrintText(FString::SanitizeFloat(StartOffset));
+
+		const auto OppositeStart = 
+			PortalActor->TransformPointToDestSpace(ImpactPoint) +
+			OppositeDirection * StartOffset;
+		const auto OppositeEnd =
+			OppositeStart + OppositeDirection * RemainRange;
+		
+		DebugHelper::DrawLine(OppositeStart, OppositeDirection);
 
 		CollisionParams.AddIgnoredActor(BluePortal);
 		CollisionParams.AddIgnoredActor(OrangePortal);
 		
-		bIsHit = GetWorld()->LineTraceSingleByChannel(
-			HitResult,
-			PortalStart,
-			PortalEnd,
-			ECC_GameTraceChannel3,
+		bIsBlocked = GetWorld()->LineTraceMultiByChannel(
+			HitResults,
+			OppositeStart,
+			OppositeEnd,
+			PORTAL_QUERY,
 			CollisionParams);
 	
-		if (!bIsHit)
+		bNothingToInteract = HitResults.IsEmpty();
+		if (bNothingToInteract)
+		{
+			UE_LOG(Portal, Log, TEXT("Nothing to interact."));
 			return;
+		}
 		
-		UE_LOG(Portal, Log, TEXT("Try grab in the opposite space."));
 		bIsGrabbedObjectAcrossedPortal = true;
+		HitResult = HitResults[0];
 	}
 
 	const auto NewGrabbedActor = HitResult.GetActor();
 	if(!CanGrab(NewGrabbedActor))
 	{
+		UE_LOG(Portal, Log, TEXT("Cannot grab the actor: %s"), *NewGrabbedActor->GetName());
 		return;	
 	}
 
 	if(!HitResult.GetComponent())
+	{
 		return;
+	}
 
 	// TODO: Start Tick
 	StartGrabbing(NewGrabbedActor);
@@ -642,16 +751,25 @@ std::optional<TObjectPtr<APortal>> UPortalGun::GetPortalInFrontOf()
 		HitResults,
 		Start,
 		End,
-		ECC_GameTraceChannel3,
+		PORTAL_QUERY,
 		CollisionParams);
 
 	for (auto HitResult : HitResults)
 	{
-		if(auto PortalOpt = 
-			APortal::CastPortal(HitResult.GetActor()))
+		auto PortalOpt = 
+			APortal::CastPortal(HitResult.GetActor());
+
+		if (!PortalOpt)
+			continue;
+
+		if (auto CapsuleComp =
+			Cast<UCapsuleComponent>(HitResult.GetComponent()))
 		{
-			return *PortalOpt;
+			// Hard coded to ignore capsule component in the portal.
+			continue;
 		}
+
+		return *PortalOpt;
 	}
 
 	return std::nullopt;

@@ -19,9 +19,6 @@
 
 DEFINE_LOG_CATEGORY(Portal);
 
-#define PORTAL_COLLISION_PROFILE_NAME "Pawn_Hole"
-#define STANDARD_COLLISION_PROFILE_NAME "Pawn"
-
 template<class T>
 using Asset = ConstructorHelpers::FObjectFinder<T>;
 
@@ -218,6 +215,11 @@ FVector APortal::GetPortalPlaneLocation() const
 uint8 APortal::GetPortalCustomStencilValue() const
 {
 	return PortalStencilValue;
+}
+
+TObjectPtr<APortal> APortal::GetLink() const
+{
+	return LinkedPortal;
 }
 
 void APortal::SetPortalCustomStencilValue(uint8 NewValue)

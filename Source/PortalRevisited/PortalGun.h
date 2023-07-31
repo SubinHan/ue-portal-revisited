@@ -70,7 +70,7 @@ public:
 	FQuat CalculatePortalRotation(const FVector& ImpactNormal, const APortal& TargetPortal) const;
 	void MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal, const APortal& TargetPortal);
 	void DestroyAllPlanesSpawnedBefore();
-	void SpawnPlanesAroundPortal();
+	void SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal);
 	FVector CalculateOffset(
 		const FVector& PortalForward, 
 		const FVector PortalRight, 
