@@ -148,6 +148,11 @@ void APortal::InitPortalCamera()
 	PortalCamera->ShowFlags.SetMotionBlur(false);
 	PortalCamera->ShowFlags.SetBloom(false);
 	PortalCamera->ShowFlags.SetToneCurve(false);
+	PortalCamera->PostProcessSettings.
+		bOverride_DynamicGlobalIlluminationMethod = true;
+	PortalCamera->PostProcessSettings.DynamicGlobalIlluminationMethod =
+		EDynamicGlobalIlluminationMethod::Lumen;
+
 	PortalCamera->bEnableClipPlane = true;
 	PortalCamera->bCaptureEveryFrame = false;
 	PortalCamera->bCaptureOnMovement = false;
