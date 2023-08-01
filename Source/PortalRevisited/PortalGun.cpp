@@ -612,11 +612,13 @@ void UPortalGun::Interact()
 	const auto Direction = Camera->GetForwardVector();
 	const auto End = Start + Direction * PORTAL_GUN_GRAB_RANGE;
 
+	DebugHelper::DrawLine(Start, Direction, FColor::Green);
+
 	FCollisionQueryParams CollisionParams;
 	CollisionParams.AddIgnoredActor(Character);
-
-	FCollisionResponseParams ResponseParams;
-
+	CollisionParams.AddIgnoredComponent(BluePortal->PortalEnterMask);
+	CollisionParams.AddIgnoredComponent(OrangePortal->PortalEnterMask);
+	
 	TArray<FHitResult> HitResults;
 
 	auto bIsBlocked = GetWorld()->LineTraceMultiByChannel(
@@ -637,6 +639,8 @@ void UPortalGun::Interact()
 	auto HitResult = HitResults[0];
 	bIsGrabbedObjectAcrossedPortal = false;
 
+	DebugHelper::PrintText(*HitResult.GetComponent()->GetName());
+	
 	if (auto PortalOpt = APortal::CastPortal(HitResult.GetActor()))
 	{
 		UE_LOG(Portal, Log, TEXT("Hit Portal, try grab beyond the opposite space"));
@@ -657,7 +661,7 @@ void UPortalGun::Interact()
 
 		// We should move start point little because
 		// prevent to hit the wall mesh.
-		constexpr auto ForwardOffset = 50.f;
+		constexpr auto ForwardOffset = 30.f;
 		const auto DirectionDotForward =
 			OppositeDirection.Dot(OppositePortalForward);
 
@@ -736,15 +740,21 @@ UPrimitiveComponent* UPortalGun::GetPrimitiveComponent(TObjectPtr<AActor> Actor)
 
 std::optional<TObjectPtr<APortal>> UPortalGun::GetPortalInFrontOf()
 {
+	UE_LOG(Portal, Log, TEXT("Try get portal in front of the character."))
 	const auto CameraComponent = Character->GetFirstPersonCameraComponent();
 	const auto Start = 
 		CameraComponent->GetComponentLocation();
 	const auto Direction = 
 		CameraComponent->GetForwardVector();
 	const auto End = Start + Direction * PORTAL_GUN_GRAB_RANGE;
-	
+
 	FCollisionQueryParams CollisionParams;
 	CollisionParams.AddIgnoredActor(Character);
+	CollisionParams.AddIgnoredComponent(BluePortal->PortalEnterMask);
+	CollisionParams.AddIgnoredComponent(OrangePortal->PortalEnterMask);
+	
+	FCollisionResponseParams ResponseParams;
+	ResponseParams.CollisionResponse = ECollisionResponse::ECR_Overlap;
 
 	TArray<FHitResult> HitResults;
 	
@@ -754,6 +764,8 @@ std::optional<TObjectPtr<APortal>> UPortalGun::GetPortalInFrontOf()
 		End,
 		PORTAL_QUERY,
 		CollisionParams);
+
+	DebugHelper::PrintText(FString::SanitizeFloat(HitResults.Num()));
 
 	for (auto HitResult : HitResults)
 	{
@@ -767,6 +779,7 @@ std::optional<TObjectPtr<APortal>> UPortalGun::GetPortalInFrontOf()
 			Cast<UCapsuleComponent>(HitResult.GetComponent()))
 		{
 			// Hard coded to ignore capsule component in the portal.
+			UE_LOG(Portal, Log, TEXT("Hitted the CapsuleComponent, but ignore it."));
 			continue;
 		}
 

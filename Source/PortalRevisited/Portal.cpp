@@ -73,7 +73,7 @@ void APortal::InitPortalPlane()
 	PortalPlane =
 		CreateDefaultSubobject<UStaticMeshComponent>("PortalPlane");
 	PortalPlane->SetupAttachment(RootComponent);
-	PortalPlane->SetCollisionProfileName("NoCollision");
+	PortalPlane->SetCollisionProfileName("OverlapAll");
 
 	// TODO: Hard coded scale
 	const auto Rotator = 
@@ -108,7 +108,7 @@ void APortal::InitPortalInner()
 	PortalInner =
 		CreateDefaultSubobject<UStaticMeshComponent>("PortalInner");
 	PortalInner->SetupAttachment(RootComponent);
-	PortalInner->SetCollisionProfileName("NoCollision");
+	PortalInner->SetCollisionProfileName("OverlapAll");
 
 	// TODO: Hard coded scale
 	const auto Rotator = 
