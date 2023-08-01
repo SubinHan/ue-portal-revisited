@@ -314,6 +314,7 @@ void UPortalGun::SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal)
 		if(!SpawnedPlane)
 			return;
 
+		SpawnedPlane->SetActorScale3D(FVector(1.0, 2.0, 1.0));
 		SpawnedPlane->SetMobility(EComponentMobility::Stationary);
 		SpawnedPlane->GetStaticMeshComponent()->SetStaticMesh(PlaneMesh);
 		auto PrimitiveComp = 

@@ -34,14 +34,15 @@ void APortal::InitMeshPortalHole()
 	//MeshPortalHole->SetVisibility(false);
 	
 	// TODO: Hard coded rotation, object type.
-	const auto Rotator = 
-		FRotator::MakeFromEuler(FVector(0.0f, -90.0f, 0.0f));
+	const auto Rotator =
+		FRotator::MakeFromEuler(FVector(0.0, 0.0, 0.0));
 	MeshPortalHole->SetRelativeRotation(Rotator);
-	MeshPortalHole->SetRelativeLocation(FVector(-50.0, 0.0, 0.0));
+	MeshPortalHole->SetRelativeLocation(FVector(0.0, 0.0, 0.0));
+	MeshPortalHole->SetRelativeScale3D(FVector(1.0, 2.0, 3.0));
 	MeshPortalHole->SetCollisionObjectType(ECollisionChannel::ECC_GameTraceChannel2);
 
 	Asset<UStaticMesh> PortalHoleMesh(
-		TEXT("StaticMesh'/Game/SM_PortalRectangle.SM_PortalRectangle'"));
+		TEXT("StaticMesh'/Game/SM_PortalCollision.SM_PortalCollision'"));
 
 	if (PortalHoleMesh.Object)
 	{
@@ -54,12 +55,13 @@ void APortal::InitPortalEnterMask()
 	PortalEnterMask =
 		CreateDefaultSubobject<UCapsuleComponent>("PortalEnterMask");
 	PortalEnterMask->InitCapsuleSize(55.f, 96.0f);
-	PortalEnterMask->SetupAttachment(MeshPortalHole);
+	PortalEnterMask->SetupAttachment(RootComponent);
 	
 	// TODO: Hard coded rotation, scale
 	const auto Rotator = 
-		FRotator::MakeFromEuler(FVector(0.0f, 90.0f, 0.0f));
+		FRotator::MakeFromEuler(FVector(0.0, 0.0, 0.0));
 	PortalEnterMask->SetRelativeRotation(Rotator);
+	PortalEnterMask->SetRelativeLocation(FVector(-50.0, 0.0, 0.0));
 	PortalEnterMask->SetRelativeScale3D(FVector(2.0f, 1.0f, 1.5f));
 
 	PortalEnterMask->OnComponentBeginOverlap.AddDynamic(this, &APortal::OnOverlapBegin);
@@ -70,11 +72,14 @@ void APortal::InitPortalPlane()
 {
 	PortalPlane =
 		CreateDefaultSubobject<UStaticMeshComponent>("PortalPlane");
-	PortalPlane->SetupAttachment(MeshPortalHole);
+	PortalPlane->SetupAttachment(RootComponent);
 	PortalPlane->SetCollisionProfileName("NoCollision");
 
 	// TODO: Hard coded scale
-	PortalPlane->SetRelativeLocation(FVector(0.0f, 0.0f, 53.f));
+	const auto Rotator = 
+		FRotator::MakeFromEuler(FVector(0.0, -90.0, 0.0));
+	PortalPlane->SetRelativeRotation(Rotator);
+	PortalPlane->SetRelativeLocation(FVector(3.0, 0.0, 0.0));
 	PortalPlane->SetRelativeScale3D(FVector(3.0f, 2.0f, 1.0f));
 
 	Asset<UStaticMesh> PortalPlaneMesh(
@@ -102,11 +107,14 @@ void APortal::InitPortalInner()
 {
 	PortalInner =
 		CreateDefaultSubobject<UStaticMeshComponent>("PortalInner");
-	PortalInner->SetupAttachment(MeshPortalHole);
+	PortalInner->SetupAttachment(RootComponent);
 	PortalInner->SetCollisionProfileName("NoCollision");
 
 	// TODO: Hard coded scale
-	PortalInner->SetRelativeLocation(FVector(0.0f, 0.0f, 30.f));
+	const auto Rotator = 
+		FRotator::MakeFromEuler(FVector(0.0, -90.0, 0.0));
+	PortalInner->SetRelativeRotation(Rotator);
+	PortalInner->SetRelativeLocation(FVector(-20.0, 0.0, 0.0));
 	PortalInner->SetRelativeScale3D(FVector(3.0f, 2.0f, 0.4f));
 
 	Asset<UStaticMesh> PortalInnerMesh(
@@ -133,10 +141,10 @@ void APortal::InitPortalCamera()
 {
 	PortalCamera = 
 		CreateDefaultSubobject<USceneCaptureComponent2D>("PortalCamera");
-	PortalCamera->SetupAttachment(MeshPortalHole);
+	PortalCamera->SetupAttachment(RootComponent);
 
 	const auto Rotator = 
-		FRotator::MakeFromEuler(FVector(0.0f, 90.0f, 0.0f));
+		FRotator::MakeFromEuler(FVector(0.0f, 0.0f, 0.0f));
 	PortalCamera->SetRelativeRotation(Rotator);
 
 	PortalCamera->CaptureSource = SCS_FinalColorHDR;
@@ -372,6 +380,10 @@ APortal::APortal()
 	PrimaryActorTick.bCanEverTick = true;
 
 	SetMobility(EComponentMobility::Movable);
+
+	RootComponent->SetRelativeRotation(
+		FRotator::MakeFromEuler(
+			FVector(0.0, 0.0, 0.0)));
 
 	InitMeshPortalHole();
 	InitPortalEnterMask();
