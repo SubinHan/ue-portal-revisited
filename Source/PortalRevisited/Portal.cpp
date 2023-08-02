@@ -7,6 +7,7 @@
 #include <stdexcept>
 
 #include "PortalGun.h"
+#include "WallDissolver.h"
 #include "PortalRevisitedCharacter.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -143,10 +144,6 @@ void APortal::InitPortalCamera()
 		CreateDefaultSubobject<USceneCaptureComponent2D>("PortalCamera");
 	PortalCamera->SetupAttachment(RootComponent);
 
-	const auto Rotator = 
-		FRotator::MakeFromEuler(FVector(0.0f, 0.0f, 0.0f));
-	PortalCamera->SetRelativeRotation(Rotator);
-
 	PortalCamera->CaptureSource = SCS_FinalColorHDR;
 	PortalCamera->ShowFlags.SetLocalExposure(false);
 	PortalCamera->ShowFlags.SetEyeAdaptation(false);
@@ -164,6 +161,20 @@ void APortal::InitPortalCamera()
 	PortalCamera->bAlwaysPersistRenderingState = true;
 
 	PortalCamera->TextureTarget = nullptr;
+}
+
+void APortal::InitWallDissolver()
+{
+	WallDissolver =
+		CreateDefaultSubobject<UWallDissolver>("WallDissolver");
+	WallDissolver->SetupAttachment(RootComponent);
+
+	// TODO: Hard coded transform
+	const auto Rotator = 
+		FRotator::MakeFromEuler(FVector(0.0, -90.0, 0.0));
+	WallDissolver->SetRelativeRotation(Rotator);
+	WallDissolver->SetRelativeLocation(FVector(0.0, 0.0, 0.0));
+	WallDissolver->SetRelativeScale3D(FVector(3.0f, 2.0f, 0.2f));
 }
 
 void APortal::UpdateCaptureCamera()
@@ -390,6 +401,7 @@ APortal::APortal()
 	InitPortalPlane();
 	InitPortalInner();
 	InitPortalCamera();
+	InitWallDissolver();
 
 	UE_LOG(Portal, Log, TEXT("Portal created."));
 }

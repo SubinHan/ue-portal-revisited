@@ -15,6 +15,7 @@ class UStaticMeshComponent;
 class UCapsuleComponent;
 class UArrowComponent;
 class UPortalGun;
+class UWallDissolver;
 
 DECLARE_LOG_CATEGORY_EXTERN(Portal, Log, All);
 
@@ -48,6 +49,10 @@ public:
 
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
 	TObjectPtr<USceneCaptureComponent2D> PortalCamera;
+	
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
+	TObjectPtr<UWallDissolver> WallDissolver;
+
 	UFUNCTION()
 	void OnOverlapBegin(
 		UPrimitiveComponent* OverlappedComp,
@@ -167,6 +172,7 @@ private:
 	void InitPortalPlane();
 	void InitPortalInner();
 	void InitPortalCamera();
+	void InitWallDissolver();
 
 	void UpdateCaptureCamera();
 	void UpdateCapture();

@@ -14,6 +14,7 @@
 #include "GameFramework/PlayerController.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "WallDissolver.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/ArrowComponent.h"
@@ -87,6 +88,9 @@ void UPortalGun::LinkPortals()
 
 	PrimaryComponentTick.AddPrerequisite(this, BluePortal->PrimaryActorTick);
 	PrimaryComponentTick.AddPrerequisite(this, OrangePortal->PrimaryActorTick);
+	
+	BluePortal->WallDissolver->SetDissolverName("Blue");
+	OrangePortal->WallDissolver->SetDissolverName("Orange");
 }
 
 void UPortalGun::AttachPortalGun(APortalRevisitedCharacter* TargetCharacter)
@@ -572,6 +576,12 @@ void UPortalGun::FireBlue()
 	BluePortal->SetActorRotation(PortalPoint->second);
 	
 	SpawnPlanesAroundPortal(BluePortal);
+
+	if (BluePortal->WallDissolver->GetDissolverName().IsEmpty())
+	{
+		UE_LOG(Portal, Warning, TEXT("Wall dissolver name is not set."))
+	}
+	BluePortal->WallDissolver->UpdateParameters();
 }
 
 void UPortalGun::FireOrange()
@@ -719,11 +729,6 @@ void UPortalGun::PostInitProperties()
 {
 	Super::PostInitProperties();
 
-	if (!BluePortal || !OrangePortal)
-		return;
-
-	BluePortal->LinkPortals(OrangePortal);
-	OrangePortal->LinkPortals(BluePortal);
 }
 
 bool UPortalGun::CanGrab(AActor* Actor)
