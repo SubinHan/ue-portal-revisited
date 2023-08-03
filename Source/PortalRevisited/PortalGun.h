@@ -68,8 +68,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void AttachPortalGun(APortalRevisitedCharacter* TargetCharacter);
 	FQuat CalculatePortalRotation(const FVector& ImpactNormal, const APortal& TargetPortal) const;
-	void MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal, const APortal& TargetPortal);
-	void DestroyAllPlanesSpawnedBefore();
+	void MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal, TObjectPtr<APortal> TargetPortal);
+	TArray<TObjectPtr<AStaticMeshActor>>& GetCollisionPlanes(TObjectPtr<APortal> TargetPortal);
+	void DestroyAllPlanesSpawnedBefore(TArray<TObjectPtr<AStaticMeshActor>>& TargetCollisionPlanes);
 	void SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal);
 	FVector CalculateOffset(
 		const FVector& PortalForward, 
@@ -92,6 +93,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void FireOrange();
+	
+	void FirePortal(TObjectPtr<APortal> TargetPortal);
 	void StopGrabbing();
 	void StartGrabbing(AActor* NewGrabbedActor);
 	

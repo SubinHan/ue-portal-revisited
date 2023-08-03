@@ -158,7 +158,7 @@ FQuat UPortalGun::CalculatePortalRotation(const FVector& ImpactNormal, const APo
 
 		const auto DiffQuat = NewQuat * OldQuat.Inverse();
 		Result =
-			DiffQuat * BluePortal->GetTransform().GetRotation();
+			DiffQuat * TargetPortal.GetTransform().GetRotation();
 	}
 
 	// The result calculated before is only correctly for
@@ -203,39 +203,48 @@ FQuat UPortalGun::CalculatePortalRotation(const FVector& ImpactNormal, const APo
 	return Result;
 }
 
-void UPortalGun::MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal, const APortal& TargetPortal)
+void UPortalGun::MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal, TObjectPtr<APortal> TargetPortal)
 {
-	BluePortal->SetActorLocation(ImpactPoint);
+	TargetPortal->SetActorLocation(ImpactPoint);
 
-	const auto Result = CalculatePortalRotation(ImpactNormal, TargetPortal);
-	BluePortal->SetActorRotation(Result);
+	const auto Result = CalculatePortalRotation(ImpactNormal, *TargetPortal);
+	TargetPortal->SetActorRotation(Result);
 }
 
-void UPortalGun::DestroyAllPlanesSpawnedBefore()
+TArray<TObjectPtr<AStaticMeshActor>>& UPortalGun::GetCollisionPlanes(TObjectPtr<APortal> TargetPortal)
 {
-	if(!BluePortalPlanes.IsEmpty())
+	if (TargetPortal->GetUniqueID() == BluePortal->GetUniqueID())
 	{
-		for (auto Plane : BluePortalPlanes)
+		return BluePortalPlanes;
+	}
+
+	return OrangePortalPlanes;
+}
+
+void UPortalGun::DestroyAllPlanesSpawnedBefore(TArray<TObjectPtr<AStaticMeshActor>>& TargetCollisionPlanes)
+{
+	if(!TargetCollisionPlanes.IsEmpty())
+	{
+		for (auto Plane : TargetCollisionPlanes)
 		{
 			Plane->Destroy();
 		}
 
-		BluePortalPlanes.Empty();
+		TargetCollisionPlanes.Empty();
 	}
 }
 
 void UPortalGun::SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal)
 {
 	UE_LOG(Portal, Log, TEXT("Spawn planes in front of the portal."))
+		
+	auto& CollisionPlanes = GetCollisionPlanes(TargetPortal);
 
-	DestroyAllPlanesSpawnedBefore();
+	DestroyAllPlanesSpawnedBefore(CollisionPlanes);
 
 	UWorld* const World = GetWorld();
 	if (!World)
 		return;
-
-	constexpr int NUM_PLANES_X = 5;
-	constexpr float PLANE_SIZE_RATIO = 1.0f;
 	
 	const auto PortalForward = TargetPortal->GetActorForwardVector();
 	const auto PortalRight = TargetPortal->GetActorRightVector();
@@ -325,7 +334,7 @@ void UPortalGun::SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal)
 			Cast<UPrimitiveComponent>(SpawnedPlane->GetRootComponent());
 		PrimitiveComp->SetCollisionProfileName(PORTAL_COLLISION_PROFILE_NAME);
 
-		BluePortalPlanes.Add(SpawnedPlane);
+		CollisionPlanes.Add(SpawnedPlane);
 
 		UE_LOG(Portal, Log, TEXT("The plane spawned on the ground."))
 	}
@@ -586,7 +595,58 @@ void UPortalGun::FireBlue()
 
 void UPortalGun::FireOrange()
 {
-	return;
+	UE_LOG(Portal, Log, TEXT("Fire orange portal"));
+
+	if (!OrangePortal)
+		return;
+
+	FirePortal(OrangePortal);
+}
+
+void UPortalGun::FirePortal(TObjectPtr<APortal> TargetPortal)
+{
+	auto Camera = Character->GetFirstPersonCameraComponent();
+
+	auto Start = Camera->GetComponentLocation();
+	auto Direction = Camera->GetForwardVector();
+	auto End = Start + Direction * PORTAL_GUN_RANGE;
+
+	FCollisionQueryParams CollisionParams;
+	CollisionParams.AddIgnoredActor(Character);
+	CollisionParams.AddIgnoredActor(TargetPortal);
+
+	FHitResult HitResult;
+
+	bool bIsHit = GetWorld()->LineTraceSingleByChannel(
+		HitResult,
+		Start,
+		End,
+		ECC_WorldStatic,
+		CollisionParams);
+
+	if (!bIsHit)
+		return;
+	
+	PortalCenterAndNormal PortalPoint
+		= CalculateCorrectPortalCenter(HitResult, *TargetPortal);
+
+	if (!PortalPoint)
+	{
+		// Portal cannot be created.
+		DebugHelper::PrintText("Cannot place the portal");
+		return;
+	}
+
+	TargetPortal->SetActorLocation(PortalPoint->first);
+	TargetPortal->SetActorRotation(PortalPoint->second);
+	
+	SpawnPlanesAroundPortal(TargetPortal);
+
+	if (TargetPortal->WallDissolver->GetDissolverName().IsEmpty())
+	{
+		UE_LOG(Portal, Warning, TEXT("Wall dissolver name is not set."))
+	}
+	TargetPortal->WallDissolver->UpdateParameters();
 }
 
 void UPortalGun::StopGrabbing()
