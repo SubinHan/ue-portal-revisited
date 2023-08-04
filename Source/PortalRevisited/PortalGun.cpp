@@ -11,6 +11,7 @@
 
 #include "Portal.h"
 #include "PortalRevisitedCharacter.h"
+#include "PortalUtil.h"
 #include "GameFramework/PlayerController.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -33,8 +34,8 @@ constexpr auto PORTAL_RIGHT_SIZE_HALF = 100.f;
 
 // OverlapAllDynamic Preset blocks ECC_GameTraceChannel3,
 // so it can uses also to query if there is a portal or not.
-constexpr auto PORTAL_QUERY = 
-	ECollisionChannel::ECC_GameTraceChannel3;
+constexpr auto PORTAL_QUERY =
+	ECC_GameTraceChannel3;
 
 UPortalGun::UPortalGun()
 	: USkeletalMeshComponent()
@@ -50,15 +51,15 @@ UPortalGun::UPortalGun()
 		Asset SphereMeshAsset(
 			TEXT("StaticMesh'/Engine/BasicShapes/Sphere.Sphere'"));
 	}
-	
-	using TextureAsset = 
+
+	using TextureAsset =
 		ConstructorHelpers::FObjectFinder<UTextureRenderTarget2D>;
 
 	TextureAsset BluePortalTextureAsset(
 		TEXT("TextureRenderTarget2D'/Game/RT_BluePortal.RT_BluePortal'"));
 	TextureAsset OrangePortalTextureAsset(
 		TEXT("TextureRenderTarget2D'/Game/RT_OrangePortal.RT_OrangePortal'"));
-	
+
 	if (BluePortalTextureAsset.Object)
 	{
 		BluePortalTexture = BluePortalTextureAsset.Object;
@@ -69,7 +70,7 @@ UPortalGun::UPortalGun()
 	}
 
 	PrimaryComponentTick.bCanEverTick = true;
-	SetTickGroup(ETickingGroup::TG_PrePhysics);
+	SetTickGroup(TG_PrePhysics);
 }
 
 void UPortalGun::LinkPortals()
@@ -88,7 +89,7 @@ void UPortalGun::LinkPortals()
 
 	PrimaryComponentTick.AddPrerequisite(this, BluePortal->PrimaryActorTick);
 	PrimaryComponentTick.AddPrerequisite(this, OrangePortal->PrimaryActorTick);
-	
+
 	BluePortal->WallDissolver->SetDissolverName("Blue");
 	OrangePortal->WallDissolver->SetDissolverName("Orange");
 }
@@ -114,138 +115,177 @@ void UPortalGun::AttachPortalGun(APortalRevisitedCharacter* TargetCharacter)
 	}
 	DebugHelper::PrintText("AA");
 	LinkPortals();
-	
+
 	// Attach the weapon to the First Person Character
 	FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, true);
 	AttachToComponent(Character->GetMesh1P(), AttachmentRules, FName(TEXT("GripPoint")));
-	
+
 	// switch bHasRifle so the animation blueprint can switch to another animation set
 	Character->SetHasRifle(true);
 	DebugHelper::PrintText("AA");
 	// Set up action bindings
 	if (APlayerController* PlayerController = Cast<APlayerController>(Character->GetController()))
 	{
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<
+			UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
 		{
 			// Set the priority of the mapping to 1, so that it overrides the Jump action with the Fire action when using touch input
 			Subsystem->AddMappingContext(PortalGunMappingContext, 1);
 		}
 
-		if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerController->InputComponent))
+		if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(
+			PlayerController->InputComponent))
 		{
 			// Fire Blue
 			EnhancedInputComponent->BindAction(FireBlueAction, ETriggerEvent::Triggered, this, &UPortalGun::FireBlue);
 
 			// Fire Orange
-			EnhancedInputComponent->BindAction(FireOrangeAction, ETriggerEvent::Triggered, this, &UPortalGun::FireOrange);
+			EnhancedInputComponent->BindAction(FireOrangeAction, ETriggerEvent::Triggered, this,
+			                                   &UPortalGun::FireOrange);
 
 			// Grab
 			EnhancedInputComponent->BindAction(GrabAction, ETriggerEvent::Triggered, this, &UPortalGun::Interact);
 		}
 	}
-
 }
 
-FQuat UPortalGun::CalculatePortalRotation(const FVector& ImpactNormal, const APortal& TargetPortal) const
+void UPortalGun::FireBlue()
 {
-	FQuat Result;
+	DebugHelper::PrintText(TEXT("FireBlue"));
 
+	if (!BluePortal)
 	{
-		const auto PortalForward = 
-			TargetPortal.GetPortalForwardVector();
-		const auto OldQuat = PortalForward.ToOrientationQuat();
-		const auto NewQuat = ImpactNormal.ToOrientationQuat();
-
-		const auto DiffQuat = NewQuat * OldQuat.Inverse();
-		Result =
-			DiffQuat * TargetPortal.GetTransform().GetRotation();
+		return;
 	}
 
-	// The result calculated before is only correctly for
-	// forward vector, but to rotate correctly for up vector
-	// or right vector, correct with WorldZ.
-	const auto WorldZ = FVector(0.0f, 0.0f, 1.0f);
-	
-	if (ImpactNormal.Equals(WorldZ))
-	{
-		const auto PortalUp = TargetPortal.GetPortalUpVector(Result);
-		
-		const auto TargetPortalUp = 
-			Character->GetActorForwardVector();
+	auto Camera = Character->GetFirstPersonCameraComponent();
 
-		const auto RotateAxis = 
-			PortalUp.Cross(TargetPortalUp).GetSafeNormal();
-		const auto CosTheta = PortalUp.Dot(TargetPortalUp);
-		
-		const auto ThetaRadian = FMath::Acos(CosTheta);
+	auto Start = Camera->GetComponentLocation();
+	auto Direction = Camera->GetForwardVector();
+	auto End = Start + Direction * PORTAL_GUN_RANGE;
 
-		Result = FQuat(RotateAxis, ThetaRadian) * Result;
-	}
-	else
+	FCollisionQueryParams CollisionParams;
+	CollisionParams.AddIgnoredActor(Character);
+	CollisionParams.AddIgnoredActor(BluePortal);
+
+	FHitResult HitResult;
+
+	bool bIsHit = GetWorld()->LineTraceSingleByChannel(
+		HitResult,
+		Start,
+		End,
+		ECC_WorldStatic,
+		CollisionParams);
+
+	if (!bIsHit)
 	{
-		const auto PortalRight = TargetPortal.GetPortalRightVector(Result);
-		
-		const FVector TargetPortalRight =
-			FVector::CrossProduct(WorldZ, ImpactNormal).GetSafeNormal();
-		
-		FVector RotateAxis;
-		if (!PortalRight.Equals(TargetPortalRight))
-		{
-			RotateAxis = 
-				PortalRight.Cross(TargetPortalRight).GetSafeNormal();
-			const auto CosTheta = PortalRight.Dot(TargetPortalRight);
-			const auto ThetaRadian = FMath::Acos(CosTheta);
-			
-			Result = FQuat(RotateAxis, ThetaRadian) * Result;
-		}
+		UE_LOG(Portal, Log, TEXT("Fired blue portal but hit nothing."));
+		return;
 	}
 
-	return Result;
+	if (HitResult.GetActor()->GetUniqueID() == OrangePortal->GetUniqueID())
+	{
+		UE_LOG(Portal, Log, TEXT("Fired blue but hit orange portal."))
+		return;
+	}
+
+	PortalCenterAndNormal PortalPoint
+		= CalculateCorrectPortalCenter(HitResult, *BluePortal);
+
+	if (!PortalPoint)
+	{
+		// Portal cannot be created.
+		DebugHelper::PrintText("Cannot place the portal");
+		return;
+	}
+
+	BluePortal->SetActorLocation(PortalPoint->first);
+	BluePortal->SetActorRotation(PortalPoint->second);
+
+	SpawnPlanesAroundPortal(BluePortal);
+
+	if (BluePortal->WallDissolver->GetDissolverName().IsEmpty())
+	{
+		UE_LOG(Portal, Warning, TEXT("Wall dissolver name is not set."))
+	}
+	BluePortal->WallDissolver->UpdateParameters();
 }
 
-void UPortalGun::MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal, TObjectPtr<APortal> TargetPortal)
+void UPortalGun::FireOrange()
 {
-	TargetPortal->SetActorLocation(ImpactPoint);
+	UE_LOG(Portal, Log, TEXT("Fire orange portal"));
 
-	const auto Result = CalculatePortalRotation(ImpactNormal, *TargetPortal);
-	TargetPortal->SetActorRotation(Result);
-}
-
-TArray<TObjectPtr<AStaticMeshActor>>& UPortalGun::GetCollisionPlanes(TObjectPtr<APortal> TargetPortal)
-{
-	if (TargetPortal->GetUniqueID() == BluePortal->GetUniqueID())
+	if (!OrangePortal)
 	{
-		return BluePortalPlanes;
+		return;
 	}
 
-	return OrangePortalPlanes;
+	FirePortal(OrangePortal);
 }
 
-void UPortalGun::DestroyAllPlanesSpawnedBefore(TArray<TObjectPtr<AStaticMeshActor>>& TargetCollisionPlanes)
+void UPortalGun::FirePortal(TObjectPtr<APortal> TargetPortal)
 {
-	if(!TargetCollisionPlanes.IsEmpty())
-	{
-		for (auto Plane : TargetCollisionPlanes)
-		{
-			Plane->Destroy();
-		}
+	auto Camera = Character->GetFirstPersonCameraComponent();
 
-		TargetCollisionPlanes.Empty();
+	auto Start = Camera->GetComponentLocation();
+	auto Direction = Camera->GetForwardVector();
+	auto End = Start + Direction * PORTAL_GUN_RANGE;
+
+	FCollisionQueryParams CollisionParams;
+	CollisionParams.AddIgnoredActor(Character);
+	CollisionParams.AddIgnoredActor(TargetPortal);
+
+	FHitResult HitResult;
+
+	bool bIsHit = GetWorld()->LineTraceSingleByChannel(
+		HitResult,
+		Start,
+		End,
+		ECC_WorldStatic,
+		CollisionParams);
+
+	if (!bIsHit)
+	{
+		return;
 	}
+
+	PortalCenterAndNormal PortalPoint
+		= CalculateCorrectPortalCenter(HitResult, *TargetPortal);
+
+	if (!PortalPoint)
+	{
+		// Portal cannot be created.
+		DebugHelper::PrintText("Cannot place the portal");
+		return;
+	}
+
+	TargetPortal->SetActorLocation(PortalPoint->first);
+	TargetPortal->SetActorRotation(PortalPoint->second);
+
+	SpawnPlanesAroundPortal(TargetPortal);
+
+	if (TargetPortal->WallDissolver->GetDissolverName().IsEmpty())
+	{
+		UE_LOG(Portal, Warning, TEXT("Wall dissolver name is not set."))
+	}
+	TargetPortal->WallDissolver->UpdateParameters();
 }
+
 
 void UPortalGun::SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal)
 {
 	UE_LOG(Portal, Log, TEXT("Spawn planes in front of the portal."))
-		
+
 	auto& CollisionPlanes = GetCollisionPlanes(TargetPortal);
 
 	DestroyAllPlanesSpawnedBefore(CollisionPlanes);
 
 	UWorld* const World = GetWorld();
 	if (!World)
+	{
 		return;
-	
+	}
+
 	const auto PortalForward = TargetPortal->GetActorForwardVector();
 	const auto PortalRight = TargetPortal->GetActorRightVector();
 	const auto PortalUp = TargetPortal->GetActorUpVector();
@@ -285,7 +325,7 @@ void UPortalGun::SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal)
 	for (auto HitResult : HitResults)
 	{
 		const auto Actor = HitResult.GetActor();
-		if(	APortal::CastPortal(Actor))
+		if (APortal::CastPortal(Actor))
 		{
 			UE_LOG(Portal, Log, TEXT("There is a portal in front of the portal."))
 			return;
@@ -307,14 +347,14 @@ void UPortalGun::SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal)
 		const auto PlaneNormal = HitResult.ImpactNormal;
 		const auto PlaneU =
 			(PortalForward - PlaneNormal.Dot(PortalForward))
-				.GetSafeNormal();
+			.GetSafeNormal();
 		const auto PlaneV = PlaneNormal.Cross(PlaneU).GetSafeNormal();
 		const auto SpawnRotation =
 			UKismetMathLibrary::MakeRotationFromAxes(
 				PlaneU,
 				PlaneV,
 				PlaneNormal);
-		
+
 		FActorSpawnParameters ActorSpawnParams;
 		ActorSpawnParams.SpawnCollisionHandlingOverride =
 			ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -323,14 +363,16 @@ void UPortalGun::SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal)
 			SpawnLocation,
 			SpawnRotation,
 			ActorSpawnParams);
-		
-		if(!SpawnedPlane)
+
+		if (!SpawnedPlane)
+		{
 			return;
+		}
 
 		SpawnedPlane->SetActorScale3D(FVector(1.0, 2.0, 1.0));
 		SpawnedPlane->SetMobility(EComponentMobility::Stationary);
 		SpawnedPlane->GetStaticMeshComponent()->SetStaticMesh(PlaneMesh);
-		auto PrimitiveComp = 
+		auto PrimitiveComp =
 			Cast<UPrimitiveComponent>(SpawnedPlane->GetRootComponent());
 		PrimitiveComp->SetCollisionProfileName(PORTAL_COLLISION_PROFILE_NAME);
 
@@ -340,83 +382,62 @@ void UPortalGun::SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal)
 	}
 }
 
-FVector UPortalGun::CalculateOffset(
-	const FVector& PortalForward,
-	const FVector PortalRight, 
-	const FVector PortalUp, 
-	const FVector U, 
-	const double Delta) const
+TArray<TObjectPtr<AStaticMeshActor>>& UPortalGun::GetCollisionPlanes(TObjectPtr<APortal> TargetPortal)
 {
-	FVector ResultPoint(0.0, 0.0, 0.0);
-
-	const auto UpDotU = PortalUp.Dot(U);
-	const auto RightDotU = PortalRight.Dot(U);
-	
-	if (FMath::IsNearlyZero(UpDotU))
+	if (TargetPortal->GetUniqueID() == BluePortal->GetUniqueID())
 	{
-		return (Delta / RightDotU) * PortalRight;
+		return BluePortalPlanes;
 	}
 
-	if (FMath::IsNearlyZero(RightDotU))
-	{
-		return (Delta / UpDotU) * PortalUp;
-	}
-
-	const auto V = U.Cross(PortalForward);
-	// Should we move portal to up direction?
-	// If the denominator is 0, then we should
-	// move to right only.
-	const auto UpDotV = PortalUp.Dot(V);
-	const auto RightDotV = PortalRight.Dot(V);
-
-	const auto Denominator = 
-		UpDotU * RightDotV -
-		RightDotU * UpDotV;
-
-	const auto DeltaUp = 
-		Delta * RightDotV /
-		Denominator;
-
-	const auto DeltaRight =
-		-DeltaUp *
-		UpDotV /
-		RightDotV;
-	
-	return DeltaUp * PortalUp + DeltaRight * PortalRight;
+	return OrangePortalPlanes;
 }
 
+void UPortalGun::DestroyAllPlanesSpawnedBefore(TArray<TObjectPtr<AStaticMeshActor>>& TargetCollisionPlanes)
+{
+	if (!TargetCollisionPlanes.IsEmpty())
+	{
+		for (auto Plane : TargetCollisionPlanes)
+		{
+			Plane->Destroy();
+		}
+
+		TargetCollisionPlanes.Empty();
+	}
+}
+
+
 UPortalGun::PortalCenterAndNormal UPortalGun::CalculateCorrectPortalCenter(
-	const FHitResult& HitResult, 
+	const FHitResult& HitResult,
 	const APortal& TargetPortal) const
 {
 	constexpr auto PortalForwardOffset = 3.0f;
-	FVector ResultPoint = HitResult.ImpactPoint - 
+	FVector ResultPoint = HitResult.ImpactPoint -
 		PortalForwardOffset * HitResult.ImpactNormal;
 
-	const auto PortalRotation = 
+	const auto PortalRotation =
 		CalculatePortalRotation(HitResult.ImpactNormal, TargetPortal);
-	
+
 	const auto PortalUp = TargetPortal.GetPortalUpVector(PortalRotation);
 	const auto PortalRight = TargetPortal.GetPortalRightVector(PortalRotation);
 	const auto PortalForward = TargetPortal.GetPortalForwardVector(PortalRotation);
 
 	const auto OtherActorBounds =
 		HitResult.GetActor()->GetComponentsBoundingBox();
-	
+
 	const auto Center = OtherActorBounds.GetCenter();
 	const auto Extent = OtherActorBounds.GetExtent();
 
 	{
 		// Calculate offset to X axis.
 		const auto PortalOffsetX = MovePortalUAxisAligned(
-		   Center,
-		   Extent,
-		   PortalForward,
-		   PortalRight,
-		   PortalUp,
-		   ResultPoint,
-		   FVector(1.0, 0.0, 0.0)
-	   );
+			Center,
+			Extent,
+			PortalForward,
+			PortalRight,
+			PortalUp,
+			ResultPoint,
+			FVector(1.0, 0.0, 0.0)
+		);
 
 		if (!PortalOffsetX)
 		{
@@ -429,14 +450,14 @@ UPortalGun::PortalCenterAndNormal UPortalGun::CalculateCorrectPortalCenter(
 	{
 		// Calculate offset to Y axis.
 		const auto PortalOffsetY = MovePortalUAxisAligned(
-		   Center,
-		   Extent,
-		   PortalForward,
-		   PortalRight,
-		   PortalUp,
-		   ResultPoint,
-		   FVector(0.0, 1.0, 0.0)
-	   );
+			Center,
+			Extent,
+			PortalForward,
+			PortalRight,
+			PortalUp,
+			ResultPoint,
+			FVector(0.0, 1.0, 0.0)
+		);
 
 		if (!PortalOffsetY)
 		{
@@ -445,18 +466,18 @@ UPortalGun::PortalCenterAndNormal UPortalGun::CalculateCorrectPortalCenter(
 
 		ResultPoint += *PortalOffsetY;
 	}
-	
+
 	{
 		// Calculate offset to Z axis.
 		const auto PortalOffsetZ = MovePortalUAxisAligned(
-		   Center,
-		   Extent,
-		   PortalForward,
-		   PortalRight,
-		   PortalUp,
-		   ResultPoint,
-		   FVector(0.0, 0.0, 1.0)
-	   );
+			Center,
+			Extent,
+			PortalForward,
+			PortalRight,
+			PortalUp,
+			ResultPoint,
+			FVector(0.0, 0.0, 1.0)
+		);
 
 		if (!PortalOffsetZ)
 		{
@@ -469,6 +490,64 @@ UPortalGun::PortalCenterAndNormal UPortalGun::CalculateCorrectPortalCenter(
 	return PortalCenterAndNormal(
 		std::make_pair(ResultPoint, PortalRotation));
 }
+
+FQuat UPortalGun::CalculatePortalRotation(const FVector& ImpactNormal, const APortal& TargetPortal) const
+{
+	FQuat Result;
+
+	{
+		const auto PortalForward =
+			TargetPortal.GetPortalForwardVector();
+		const auto OldQuat = PortalForward.ToOrientationQuat();
+		const auto NewQuat = ImpactNormal.ToOrientationQuat();
+
+		const auto DiffQuat = NewQuat * OldQuat.Inverse();
+		Result =
+			DiffQuat * TargetPortal.GetTransform().GetRotation();
+	}
+
+	// The result calculated before is only correctly for
+	// forward vector, but to rotate correctly for up vector
+	// or right vector, correct with WorldZ.
+	const auto WorldZ = FVector(0.0f, 0.0f, 1.0f);
+
+	if (ImpactNormal.Equals(WorldZ))
+	{
+		const auto PortalUp = TargetPortal.GetPortalUpVector(Result);
+
+		const auto TargetPortalUp =
+			Character->GetActorForwardVector();
+
+		const auto RotateAxis =
+			PortalUp.Cross(TargetPortalUp).GetSafeNormal();
+		const auto CosTheta = PortalUp.Dot(TargetPortalUp);
+
+		const auto ThetaRadian = FMath::Acos(CosTheta);
+
+		Result = FQuat(RotateAxis, ThetaRadian) * Result;
+	}
+	else
+	{
+		const auto PortalRight = TargetPortal.GetPortalRightVector(Result);
+
+		const FVector TargetPortalRight =
+			FVector::CrossProduct(WorldZ, ImpactNormal).GetSafeNormal();
+
+		FVector RotateAxis;
+		if (!PortalRight.Equals(TargetPortalRight))
+		{
+			RotateAxis =
+				PortalRight.Cross(TargetPortalRight).GetSafeNormal();
+			const auto CosTheta = PortalRight.Dot(TargetPortalRight);
+			const auto ThetaRadian = FMath::Acos(CosTheta);
+
+			Result = FQuat(RotateAxis, ThetaRadian) * Result;
+		}
+	}
+
+	return Result;
+}
+
 
 UPortalGun::PortalOffset UPortalGun::MovePortalUAxisAligned(
 	const FVector& BoundCenter,
@@ -489,13 +568,13 @@ UPortalGun::PortalOffset UPortalGun::MovePortalUAxisAligned(
 		BoundCenterU + BoundExtentU,
 		BoundCenterU - BoundExtentU);
 	const auto UMin = FMath::Min(
-		BoundCenterU + BoundExtentU, 
+		BoundCenterU + BoundExtentU,
 		BoundCenterU - BoundExtentU);
 
 	const auto PortalUpDotU = PortalUp.Dot(U);
 	const auto PortalRightDotU = PortalRight.Dot(U);
 
-	const auto PortalUSizeHalf = 
+	const auto PortalUSizeHalf =
 		PORTAL_UP_SIZE_HALF * FMath::Abs(PortalUpDotU) +
 		PORTAL_RIGHT_SIZE_HALF * FMath::Abs(PortalRightDotU);
 
@@ -517,7 +596,7 @@ UPortalGun::PortalOffset UPortalGun::MovePortalUAxisAligned(
 	if (UComponent < PortalUMin)
 	{
 		Delta = PortalUMin - UComponent;
-		
+
 		// Now we will move U without modifying V components.
 		ResultOffset += CalculateOffset(
 			PortalForward,
@@ -538,130 +617,53 @@ UPortalGun::PortalOffset UPortalGun::MovePortalUAxisAligned(
 			U,
 			Delta);
 	}
-	
+
 	return PortalOffset(ResultOffset);
 }
 
-void UPortalGun::FireBlue()
+FVector UPortalGun::CalculateOffset(
+	const FVector& PortalForward,
+	const FVector PortalRight,
+	const FVector PortalUp,
+	const FVector U,
+	const double Delta) const
 {
-	DebugHelper::PrintText(TEXT("FireBlue"));
+	FVector ResultPoint(0.0, 0.0, 0.0);
 
-	if (!BluePortal)
-		return;
+	const auto UpDotU = PortalUp.Dot(U);
+	const auto RightDotU = PortalRight.Dot(U);
 
-	auto Camera = Character->GetFirstPersonCameraComponent();
-
-	auto Start = Camera->GetComponentLocation();
-	auto Direction = Camera->GetForwardVector();
-	auto End = Start + Direction * PORTAL_GUN_RANGE;
-
-	FCollisionQueryParams CollisionParams;
-	CollisionParams.AddIgnoredActor(Character);
-	CollisionParams.AddIgnoredActor(BluePortal);
-
-	FHitResult HitResult;
-
-	bool bIsHit = GetWorld()->LineTraceSingleByChannel(
-		HitResult,
-		Start,
-		End,
-		ECC_WorldStatic,
-		CollisionParams);
-
-	if (!bIsHit)
-		return;
-	
-	PortalCenterAndNormal PortalPoint
-		= CalculateCorrectPortalCenter(HitResult, *BluePortal);
-
-	if (!PortalPoint)
+	if (FMath::IsNearlyZero(UpDotU))
 	{
-		// Portal cannot be created.
-		DebugHelper::PrintText("Cannot place the portal");
-		return;
+		return (Delta / RightDotU) * PortalRight;
 	}
 
-	BluePortal->SetActorLocation(PortalPoint->first);
-	BluePortal->SetActorRotation(PortalPoint->second);
-	
-	SpawnPlanesAroundPortal(BluePortal);
-
-	if (BluePortal->WallDissolver->GetDissolverName().IsEmpty())
+	if (FMath::IsNearlyZero(RightDotU))
 	{
-		UE_LOG(Portal, Warning, TEXT("Wall dissolver name is not set."))
-	}
-	BluePortal->WallDissolver->UpdateParameters();
-}
-
-void UPortalGun::FireOrange()
-{
-	UE_LOG(Portal, Log, TEXT("Fire orange portal"));
-
-	if (!OrangePortal)
-		return;
-
-	FirePortal(OrangePortal);
-}
-
-void UPortalGun::FirePortal(TObjectPtr<APortal> TargetPortal)
-{
-	auto Camera = Character->GetFirstPersonCameraComponent();
-
-	auto Start = Camera->GetComponentLocation();
-	auto Direction = Camera->GetForwardVector();
-	auto End = Start + Direction * PORTAL_GUN_RANGE;
-
-	FCollisionQueryParams CollisionParams;
-	CollisionParams.AddIgnoredActor(Character);
-	CollisionParams.AddIgnoredActor(TargetPortal);
-
-	FHitResult HitResult;
-
-	bool bIsHit = GetWorld()->LineTraceSingleByChannel(
-		HitResult,
-		Start,
-		End,
-		ECC_WorldStatic,
-		CollisionParams);
-
-	if (!bIsHit)
-		return;
-	
-	PortalCenterAndNormal PortalPoint
-		= CalculateCorrectPortalCenter(HitResult, *TargetPortal);
-
-	if (!PortalPoint)
-	{
-		// Portal cannot be created.
-		DebugHelper::PrintText("Cannot place the portal");
-		return;
+		return (Delta / UpDotU) * PortalUp;
 	}
 
-	TargetPortal->SetActorLocation(PortalPoint->first);
-	TargetPortal->SetActorRotation(PortalPoint->second);
-	
-	SpawnPlanesAroundPortal(TargetPortal);
+	const auto V = U.Cross(PortalForward);
+	// Should we move portal to up direction?
+	// If the denominator is 0, then we should
+	// move to right only.
+	const auto UpDotV = PortalUp.Dot(V);
+	const auto RightDotV = PortalRight.Dot(V);
 
-	if (TargetPortal->WallDissolver->GetDissolverName().IsEmpty())
-	{
-		UE_LOG(Portal, Warning, TEXT("Wall dissolver name is not set."))
-	}
-	TargetPortal->WallDissolver->UpdateParameters();
-}
+	const auto Denominator =
+		UpDotU * RightDotV -
+		RightDotU * UpDotV;
 
-void UPortalGun::StopGrabbing()
-{
-	auto PrimitiveComp = GetPrimitiveComponent(GrabbedActor);
-	PrimitiveComp->SetPhysicsLinearVelocity(FVector(0.0));
+	const auto DeltaUp =
+		Delta * RightDotV /
+		Denominator;
 
-	bIsGrabbing = false;
-	GrabbedActor = nullptr;
-}
+	const auto DeltaRight =
+		-DeltaUp *
+		UpDotV /
+		RightDotV;
 
-void UPortalGun::StartGrabbing(AActor* const NewGrabbedActor)
-{
-	bIsGrabbing = true;
-	GrabbedActor = NewGrabbedActor;
+	return DeltaUp * PortalUp + DeltaRight * PortalRight;
 }
 
 void UPortalGun::Interact()
@@ -675,7 +677,7 @@ void UPortalGun::Interact()
 	}
 
 	UE_LOG(Portal, Log, TEXT("Try interact"));
-	
+
 	auto Camera = Character->GetFirstPersonCameraComponent();
 
 	const auto Start = Camera->GetComponentLocation();
@@ -688,7 +690,7 @@ void UPortalGun::Interact()
 	CollisionParams.AddIgnoredActor(Character);
 	CollisionParams.AddIgnoredComponent(BluePortal->PortalEnterMask);
 	CollisionParams.AddIgnoredComponent(OrangePortal->PortalEnterMask);
-	
+
 	TArray<FHitResult> HitResults;
 
 	auto bIsBlocked = GetWorld()->LineTraceMultiByChannel(
@@ -710,7 +712,7 @@ void UPortalGun::Interact()
 	bIsGrabbedObjectAcrossedPortal = false;
 
 	DebugHelper::PrintText(*HitResult.GetComponent()->GetName());
-	
+
 	if (auto PortalOpt = APortal::CastPortal(HitResult.GetActor()))
 	{
 		UE_LOG(Portal, Log, TEXT("Hit Portal, try grab beyond the opposite space"));
@@ -737,46 +739,46 @@ void UPortalGun::Interact()
 
 		const auto StartOffset =
 			ForwardOffset / DirectionDotForward;
-		
+
 		DebugHelper::PrintText(FString::SanitizeFloat(StartOffset));
 
-		const auto OppositeStart = 
+		const auto OppositeStart =
 			PortalActor->TransformPointToDestSpace(ImpactPoint) +
 			OppositeDirection * StartOffset;
 		const auto OppositeEnd =
 			OppositeStart + OppositeDirection * RemainRange;
-		
+
 		DebugHelper::DrawLine(OppositeStart, OppositeDirection);
 
 		CollisionParams.AddIgnoredActor(BluePortal);
 		CollisionParams.AddIgnoredActor(OrangePortal);
-		
+
 		bIsBlocked = GetWorld()->LineTraceMultiByChannel(
 			HitResults,
 			OppositeStart,
 			OppositeEnd,
 			PORTAL_QUERY,
 			CollisionParams);
-	
+
 		bNothingToInteract = HitResults.IsEmpty();
 		if (bNothingToInteract)
 		{
 			UE_LOG(Portal, Log, TEXT("Nothing to interact."));
 			return;
 		}
-		
+
 		bIsGrabbedObjectAcrossedPortal = true;
 		HitResult = HitResults[0];
 	}
 
 	const auto NewGrabbedActor = HitResult.GetActor();
-	if(!CanGrab(NewGrabbedActor))
+	if (!CanGrab(NewGrabbedActor))
 	{
 		UE_LOG(Portal, Log, TEXT("Cannot grab the actor: %s"), *NewGrabbedActor->GetName());
-		return;	
+		return;
 	}
 
-	if(!HitResult.GetComponent())
+	if (!HitResult.GetComponent())
 	{
 		return;
 	}
@@ -785,10 +787,24 @@ void UPortalGun::Interact()
 	StartGrabbing(NewGrabbedActor);
 }
 
-void UPortalGun::PostInitProperties()
+void UPortalGun::StopGrabbing()
 {
-	Super::PostInitProperties();
+	auto PrimitiveCompOpt = GetPrimitiveComponent(GrabbedActor);
 
+	if (PrimitiveCompOpt)
+	{
+		auto PrimitiveComp = *PrimitiveCompOpt;
+		PrimitiveComp->SetPhysicsLinearVelocity(FVector(0.0));
+	}
+
+	bIsGrabbing = false;
+	GrabbedActor = nullptr;
+}
+
+void UPortalGun::StartGrabbing(AActor* const NewGrabbedActor)
+{
+	bIsGrabbing = true;
+	GrabbedActor = NewGrabbedActor;
 }
 
 bool UPortalGun::CanGrab(AActor* Actor)
@@ -796,20 +812,13 @@ bool UPortalGun::CanGrab(AActor* Actor)
 	return Actor->IsRootComponentMovable();
 }
 
-UPrimitiveComponent* UPortalGun::GetPrimitiveComponent(TObjectPtr<AActor> Actor)
-{
-	return static_cast<UPrimitiveComponent*>(
-		Actor->GetComponentByClass(
-			UPrimitiveComponent::StaticClass()));
-}
-
-std::optional<TObjectPtr<APortal>> UPortalGun::GetPortalInFrontOf()
+std::optional<TObjectPtr<APortal>> UPortalGun::GetPortalInFrontOfCharacter()
 {
 	UE_LOG(Portal, Log, TEXT("Try get portal in front of the character."))
 	const auto CameraComponent = Character->GetFirstPersonCameraComponent();
-	const auto Start = 
+	const auto Start =
 		CameraComponent->GetComponentLocation();
-	const auto Direction = 
+	const auto Direction =
 		CameraComponent->GetForwardVector();
 	const auto End = Start + Direction * PORTAL_GUN_GRAB_RANGE;
 
@@ -817,28 +826,28 @@ std::optional<TObjectPtr<APortal>> UPortalGun::GetPortalInFrontOf()
 	CollisionParams.AddIgnoredActor(Character);
 	CollisionParams.AddIgnoredComponent(BluePortal->PortalEnterMask);
 	CollisionParams.AddIgnoredComponent(OrangePortal->PortalEnterMask);
-	
+
 	FCollisionResponseParams ResponseParams;
-	ResponseParams.CollisionResponse = ECollisionResponse::ECR_Overlap;
+	ResponseParams.CollisionResponse = ECR_Overlap;
 
 	TArray<FHitResult> HitResults;
-	
+
 	GetWorld()->LineTraceMultiByChannel(
 		HitResults,
 		Start,
 		End,
 		PORTAL_QUERY,
 		CollisionParams);
-
-	DebugHelper::PrintText(FString::SanitizeFloat(HitResults.Num()));
-
+	
 	for (auto HitResult : HitResults)
 	{
-		auto PortalOpt = 
+		auto PortalOpt =
 			APortal::CastPortal(HitResult.GetActor());
 
 		if (!PortalOpt)
+		{
 			continue;
+		}
 
 		if (auto CapsuleComp =
 			Cast<UCapsuleComponent>(HitResult.GetComponent()))
@@ -854,25 +863,55 @@ std::optional<TObjectPtr<APortal>> UPortalGun::GetPortalInFrontOf()
 	return std::nullopt;
 }
 
+void UPortalGun::OnActorPassedPortal(
+	TObjectPtr<APortal> PassedPortal,
+	TObjectPtr<AActor> PassingActor)
+{
+	if (!bIsGrabbing)
+	{
+		return;
+	}
+
+	UE_LOG(Portal, Log, TEXT("The grabbed object acrossed the portal"));
+	if (PassingActor->GetUniqueID() == Character->GetUniqueID())
+	{
+		bIsGrabbedObjectAcrossedPortal = !bIsGrabbedObjectAcrossedPortal;
+	}
+
+	if (PassingActor->GetUniqueID() == GrabbedActor->GetUniqueID())
+	{
+		bIsGrabbedObjectAcrossedPortal = !bIsGrabbedObjectAcrossedPortal;
+	}
+}
+
+void UPortalGun::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	ForceGrabbedObject();
+}
+
 void UPortalGun::ForceGrabbedObject()
 {
 	if (!bIsGrabbing)
+	{
 		return;
-	
+	}
+
 	const auto CameraComponent = Character->GetFirstPersonCameraComponent();
-	const auto CameraLocation = 
+	const auto CameraLocation =
 		CameraComponent->GetComponentLocation();
-	const auto CameraDirection = 
+	const auto CameraDirection =
 		CameraComponent->GetForwardVector();
 
 	auto TargetLocation =
 		CameraLocation +
 		CameraDirection * PORTAL_GUN_GRAB_OFFSET;
 	auto CurrentLocation = GrabbedActor->GetActorLocation();
-	
+
 	if (bIsGrabbedObjectAcrossedPortal)
 	{
-		if (auto PortalOpt = GetPortalInFrontOf())
+		if (auto PortalOpt = GetPortalInFrontOfCharacter())
 		{
 			const auto& PortalInFront = *PortalOpt;
 			TargetLocation =
@@ -903,7 +942,12 @@ void UPortalGun::ForceGrabbedObject()
 	}
 
 
-	auto PrimitiveComp = GetPrimitiveComponent(GrabbedActor);
+	auto PrimitiveCompOpt = GetPrimitiveComponent(GrabbedActor);
+
+	if (!PrimitiveCompOpt)
+		return;
+
+	auto PrimitiveComp = *PrimitiveCompOpt;
 
 	const auto Velocity =
 		Direction * Length * PORTAL_GUN_GRAB_FORCE_MULTIPLIER;
@@ -911,30 +955,4 @@ void UPortalGun::ForceGrabbedObject()
 	PrimitiveComp->SetAllPhysicsLinearVelocity(Velocity);
 	PrimitiveComp->SetAllPhysicsAngularVelocityInDegrees(
 		FVector(0.0));
-}
-
-void UPortalGun::OnActorPassedPortal(
-	TObjectPtr<APortal> PassedPortal, 
-	TObjectPtr<AActor> PassingActor)
-{
-	if(!bIsGrabbing)
-		return;
-
-	UE_LOG(Portal, Log, TEXT("The grabbed object acrossed the portal"));
-	if (PassingActor->GetUniqueID() == Character->GetUniqueID())
-	{
-		bIsGrabbedObjectAcrossedPortal = !bIsGrabbedObjectAcrossedPortal;
-	}
-
-	if (PassingActor->GetUniqueID() == GrabbedActor->GetUniqueID())
-	{
-		bIsGrabbedObjectAcrossedPortal = !bIsGrabbedObjectAcrossedPortal;
-	}
-}
-
-void UPortalGun::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
-{
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	ForceGrabbedObject();
 }

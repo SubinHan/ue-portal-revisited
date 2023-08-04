@@ -67,19 +67,31 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void AttachPortalGun(APortalRevisitedCharacter* TargetCharacter);
-	FQuat CalculatePortalRotation(const FVector& ImpactNormal, const APortal& TargetPortal) const;
-	void MovePortal(const FVector& ImpactPoint, const FVector& ImpactNormal, TObjectPtr<APortal> TargetPortal);
-	TArray<TObjectPtr<AStaticMeshActor>>& GetCollisionPlanes(TObjectPtr<APortal> TargetPortal);
-	void DestroyAllPlanesSpawnedBefore(TArray<TObjectPtr<AStaticMeshActor>>& TargetCollisionPlanes);
-	void SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal);
-	FVector CalculateOffset(
-		const FVector& PortalForward, 
-		const FVector PortalRight, 
-		const FVector PortalUp, 
-		const FVector U, 
-		const double Delta) const;
 
-	PortalCenterAndNormal CalculateCorrectPortalCenter(const FHitResult& HitResult, const APortal& TargetPortal) const;
+	UFUNCTION(BlueprintCallable, Category="PortalGun")
+	void FireBlue();
+
+	UFUNCTION(BlueprintCallable, Category="PortalGun")
+	void FireOrange();
+	
+	void FirePortal(TObjectPtr<APortal> TargetPortal);
+
+	void SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal);
+	
+	TArray<TObjectPtr<AStaticMeshActor>>& GetCollisionPlanes(
+		TObjectPtr<APortal> TargetPortal);
+
+	void DestroyAllPlanesSpawnedBefore(
+		TArray<TObjectPtr<AStaticMeshActor>>& TargetCollisionPlanes);
+
+	PortalCenterAndNormal CalculateCorrectPortalCenter(
+		const FHitResult& HitResult, 
+		const APortal& TargetPortal) const;
+	
+	FQuat CalculatePortalRotation(
+		const FVector& ImpactNormal,
+		const APortal& TargetPortal) const;
+
 	PortalOffset MovePortalUAxisAligned(
 		const FVector& BoundCenter, 
 		const FVector& BoundExtent, 
@@ -88,24 +100,22 @@ public:
 		const FVector& PortalUp,
 		const FVector& PortalPoint,
 		const FVector& U) const;
-	UFUNCTION(BlueprintCallable, Category="PortalGun")
-	void FireBlue();
 
-	UFUNCTION(BlueprintCallable, Category="PortalGun")
-	void FireOrange();
-	
-	void FirePortal(TObjectPtr<APortal> TargetPortal);
-	void StopGrabbing();
-	void StartGrabbing(AActor* NewGrabbedActor);
-	
+	FVector CalculateOffset(
+		const FVector& PortalForward, 
+		const FVector PortalRight, 
+		const FVector PortalUp, 
+		const FVector U, 
+		const double Delta) const;
+
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void Interact();
-
-	virtual void PostInitProperties() override;
+	
+	void StopGrabbing();
+	void StartGrabbing(AActor* NewGrabbedActor);
 	bool CanGrab(AActor* Actor);
-	UPrimitiveComponent* GetPrimitiveComponent(TObjectPtr<AActor>);
-	std::optional<TObjectPtr<APortal>> GetPortalInFrontOf();
-	void ForceGrabbedObject();
+	
+	std::optional<TObjectPtr<APortal>> GetPortalInFrontOfCharacter();
 
 	void OnActorPassedPortal(
 		TObjectPtr<APortal> PassedPortal,
@@ -115,6 +125,7 @@ public:
 		float DeltaTime,
 		ELevelTick TickType,
 		FActorComponentTickFunction* ThisTickFunction) override;
+	void ForceGrabbedObject();
 
 private:
 	/** The Character holding this weapon*/

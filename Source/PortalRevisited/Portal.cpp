@@ -8,6 +8,7 @@
 
 #include "PortalGun.h"
 #include "WallDissolver.h"
+#include "PortalUtil.h"
 #include "PortalRevisitedCharacter.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -175,6 +176,28 @@ void APortal::InitWallDissolver()
 	WallDissolver->SetRelativeRotation(Rotator);
 	WallDissolver->SetRelativeLocation(FVector(0.0, 0.0, 0.0));
 	WallDissolver->SetRelativeScale3D(FVector(3.0f, 2.0f, 0.2f));
+}
+
+void APortal::UpdateClones()
+{
+	for (auto [Original, Clone] : CloneMap)
+	{
+		auto CloneLocation =
+			TransformPointToDestSpace(Original->GetActorLocation());
+		Clone->SetActorLocation(CloneLocation);
+
+		auto CloneRotation =
+			TransformQuatToDestSpace(Original->GetActorQuat());
+		Clone->SetActorRotation(CloneRotation);
+
+		auto PrimitiveCompOpt = GetPrimitiveComponent(Original);
+		if (!PrimitiveCompOpt)
+			continue;
+		
+		auto CloneVelocity = Original->GetVelocity();
+		auto PrimitiveComp = *PrimitiveCompOpt;
+		PrimitiveComp->SetPhysicsLinearVelocity(CloneVelocity);
+	}
 }
 
 void APortal::UpdateCaptureCamera()
@@ -459,15 +482,22 @@ void APortal::BeginPlay()
 void APortal::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	UpdateCapture();
 	CheckAndTeleportOverlappingActors();
+	UpdateClones();
+	UpdateCapture();
 }
 
 void APortal::RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPrimitiveComponent> Component)
 {
+	// Prevent to stack overflow by spawning clone actor.
+	if (bStopRegistering)
+		return;
+
+	// Ignore cloned actors.
 	if(IgnoredActors.Contains(Actor))
 		return;
 
+	// Ignore overlapping actors already.
 	if (OverlappingActors.Contains(Actor))
 		return;
 
@@ -477,34 +507,40 @@ void APortal::RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPri
 	TArray<TObjectPtr<USceneComponent>> ChildComponents;
 	Actor->GetRootComponent()->GetChildrenComponents(true, ChildComponents);
 
-	//auto CloneComponent = DuplicateObject(Component, this, "BB");
-	////CloneComponent->GetChildrenComponents(true, ChildComponents);
+	for (auto Child : ChildComponents)
+	{
+		DebugHelper::PrintText(Child->GetName());
+	}
 
-	//for (auto Child : ChildComponents)
-	//{
-	//	DebugHelper::PrintText(Child->GetName());
-	//}
+	auto SpawnParams = FActorSpawnParameters();
+	SpawnParams.Template = Actor;
+	
+	const auto ActorLocation = Actor->GetActorLocation();
+	const auto DestLocation = 
+		TransformPointToDestSpace(ActorLocation);
+	const auto LocationDifference =
+		DestLocation - ActorLocation;
+	
+	bStopRegistering = true;
+	LinkedPortal->bStopRegistering = true;
 
-	//auto SpawnParams = FActorSpawnParameters();
-	//SpawnParams.bNoFail = true;
+	TObjectPtr<AActor> Clone = GWorld->SpawnActor<AStaticMeshActor>(
+		LocationDifference,
+		FRotator::ZeroRotator,
+		SpawnParams);
 
-	//TObjectPtr<AActor> Clone = GWorld->SpawnActor<AActor>(
-	//	TransformPointToDestSpace(Actor->GetActorLocation()),
-	//	TransformQuatToDestSpace(Actor->GetActorRotation().Quaternion()).Rotator(),
-	//	SpawnParams);
+	if (!Clone)
+	{
+		UE_LOG(Portal, Warning, TEXT("Cloning failed."))
+		return;
+	}
 
-	//DebugHelper::PrintVector(TransformPointToDestSpace(Actor->GetActorLocation()));
-	//DebugHelper::PrintVector(Clone->GetActorLocation());
-	//Clone->SetRootComponent(CloneComponent);
-
-	//Clone->SetActorLocation(TransformPointToDestSpace(Actor->GetActorLocation()));
-
-
-	//CloneComponent->SetupAttachment(
-	//	Clone->GetRootComponent(), TEXT("AA"));
-
-	//LinkedPortal->AddIgnoredActor(Clone);
-	//CloneMap.Add(Actor->GetUniqueID(), Clone);
+	AddIgnoredActor(Clone);
+	LinkedPortal->AddIgnoredActor(Clone);
+	CloneMap.Add(Actor, Clone);
+	
+	bStopRegistering = false;
+	LinkedPortal->bStopRegistering = false;
 }
 
 void APortal::OnOverlapBegin(
@@ -534,7 +570,7 @@ void APortal::OnOverlapBegin(
 	RegisterOverlappingActor(OtherActor, OtherComp);
 }
 
-void APortal::UnregisterOverlappingActor(AActor* Actor, UPrimitiveComponent* Component)
+void APortal::UnregisterOverlappingActor(TObjectPtr<AActor> Actor, UPrimitiveComponent* Component)
 {
 	if(IgnoredActors.Contains(Actor))
 		return;
@@ -542,9 +578,17 @@ void APortal::UnregisterOverlappingActor(AActor* Actor, UPrimitiveComponent* Com
 	Component->SetCollisionProfileName(TEXT(STANDARD_COLLISION_PROFILE_NAME));
 	OverlappingActors.Remove(Actor);
 
-	//auto Clone = CloneMap[Actor->GetUniqueID()];
-	//LinkedPortal->RemoveIgnoredActor(Clone);
-	//GWorld->DestroyActor(Clone);
+	auto Clone = CloneMap.Find(Actor);
+	if (!Clone)
+	{
+		DebugHelper::PrintText("Map failed");
+		return;
+	}
+	
+	CloneMap.Remove(Actor);
+	GWorld->DestroyActor(*Clone);
+	LinkedPortal->RemoveIgnoredActor(*Clone);
+	RemoveIgnoredActor(*Clone);
 }
 
 void APortal::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
@@ -558,11 +602,6 @@ void APortal::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherAct
 
 	if (!OtherComp)
 		return;
-
-	//if (GEngine)
-	//{
-	//	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("OverlapEnd"));
-	//}
 	
 	UnregisterOverlappingActor(OtherActor, OtherComp);
 }

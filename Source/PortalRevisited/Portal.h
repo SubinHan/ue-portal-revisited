@@ -61,7 +61,7 @@ public:
 		int32 OtherBodyIndex,
 		bool bFromSweep,
 		const FHitResult& SweepResult);
-	void UnregisterOverlappingActor(AActor* Actor, UPrimitiveComponent* Component);
+	void UnregisterOverlappingActor(TObjectPtr<AActor> Actor, UPrimitiveComponent* Component);
 
 	UFUNCTION()
 	void OnOverlapEnd(
@@ -82,7 +82,8 @@ private:
 
 	TArray<TObjectPtr<AActor>> OverlappingActors;
 	TArray<TObjectPtr<AActor>> IgnoredActors;
-	TMap<uint32, TObjectPtr<AActor>> CloneMap;
+	TMap<TObjectPtr<AActor>, TObjectPtr<AActor>> CloneMap;
+	bool bStopRegistering;
 	TObjectPtr<UPortalGun> PortalGun;
 
 protected:
@@ -173,7 +174,8 @@ private:
 	void InitPortalInner();
 	void InitPortalCamera();
 	void InitWallDissolver();
-
+	
+	void UpdateClones();
 	void UpdateCaptureCamera();
 	void UpdateCapture();
 	void CheckAndTeleportOverlappingActors();
