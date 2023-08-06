@@ -82,6 +82,8 @@ private:
 	TObjectPtr<APortal> LinkedPortal;
 	uint8 PortalStencilValue;
 
+	bool bIsActivated;
+
 	TArray<TObjectPtr<AActor>> OverlappingActors;
 	TArray<TObjectPtr<AActor>> IgnoredActors;
 	TMap<TObjectPtr<AActor>, TObjectPtr<AActor>> CloneMap;
@@ -96,6 +98,8 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 	void RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPrimitiveComponent> Component);
+	
+	void SetIsActivated(bool bNewIsActivated);
 
 	FVector GetPortalUpVector() const;
 	FVector GetPortalRightVector() const;

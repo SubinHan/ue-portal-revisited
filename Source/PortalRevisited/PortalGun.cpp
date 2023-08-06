@@ -92,6 +92,10 @@ void UPortalGun::LinkPortals()
 
 	BluePortal->WallDissolver->SetDissolverName("Blue");
 	OrangePortal->WallDissolver->SetDissolverName("Orange");
+
+	BluePortal->SetIsActivated(true);
+	OrangePortal->SetIsActivated(true);
+
 }
 
 void UPortalGun::AttachPortalGun(APortalRevisitedCharacter* TargetCharacter)
@@ -228,7 +232,7 @@ void UPortalGun::FirePortal(TObjectPtr<APortal> TargetPortal)
 	{
 		UE_LOG(Portal, Warning, TEXT("Wall dissolver name is not set."))
 	}
-	TargetPortal->WallDissolver->UpdateParameters();
+	TargetPortal->WallDissolver->UpdateParameters(TargetPortal->GetActorLocation());
 }
 
 

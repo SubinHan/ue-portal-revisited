@@ -5,6 +5,7 @@
 
 #include <stdexcept>
 
+#include "DebugHelper.h"
 #include "Materials/MaterialParameterCollection.h"
 #include "Kismet/KismetMaterialLibrary.h"
 #include "Materials/MaterialParameterCollectionInstance.h"
@@ -42,7 +43,7 @@ FString UWallDissolver::GetDissolverName()
  * It updates location and scale parameter, named by
  * "Location" + DissolverName and "Scale" + DissolverName.
  */
-void UWallDissolver::UpdateParameters()
+void UWallDissolver::UpdateParameters(const FVector RootLocation)
 {
 	auto MatParamCollectionInstance =
 		GWorld->GetParameterCollectionInstance(MatParamCollection);
@@ -52,7 +53,7 @@ void UWallDissolver::UpdateParameters()
 
 	MatParamCollectionInstance->SetVectorParameterValue(
 		FName(LocationParameterName),
-		GetComponentLocation());
+		RootLocation);
 	
 	auto ScaleParameterName =
 		PARAMETER_NAME_SCALE + DissolverName;

@@ -19,7 +19,7 @@ public:
 
 	void SetDissolverName(FString Name);
 	FString GetDissolverName();
-	void UpdateParameters();
+	void UpdateParameters(const FVector RootLocation);
 
 private:
 	TObjectPtr<UMaterialParameterCollection> MatParamCollection;

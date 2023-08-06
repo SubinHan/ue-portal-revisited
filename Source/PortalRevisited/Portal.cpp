@@ -556,6 +556,10 @@ void APortal::BeginPlay()
 void APortal::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	if (!bIsActivated)
+		return;
+
 	UpdateClones();
 	UpdateCapture();
 	CheckAndTeleportOverlappingActors();
@@ -640,6 +644,11 @@ void APortal::RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPri
 	
 	bStopRegistering = false;
 	LinkedPortal->bStopRegistering = false;
+}
+
+void APortal::SetIsActivated(bool bNewIsActivated)
+{
+	bIsActivated = bNewIsActivated;
 }
 
 void APortal::OnOverlapBegin(
@@ -864,7 +873,6 @@ bool APortal::IsPointInFrontOfPortal(const FVector& Point, const FVector& Portal
 	const FVector PointToPortal = PortalPos - Point;
 
 	const auto Result = FVector::DotProduct(PointToPortal, PortalNormal);
-	DebugHelper::PrintText(FString::SanitizeFloat(Result));
 
 	return Result < EPSILON;
 }
