@@ -423,6 +423,10 @@ void APortal::TeleportActor(AActor& Actor)
 	const auto AfterLocation =
 		TransformPointToDestSpace(BeforeLocation);
 	
+	const auto BeforeQuat = Actor.GetActorQuat();
+	const auto AfterQuat =
+		TransformQuatToDestSpace(BeforeQuat);
+	
 	Actor.SetActorLocation(AfterLocation, false, nullptr, ETeleportType::None);
 	 
 	if (auto Player = 
@@ -430,24 +434,30 @@ void APortal::TeleportActor(AActor& Actor)
 	{
 		UE_LOG(Portal, Log, TEXT("The character teleported."));
 		auto Controller = Player->GetController();
-		const auto BeforeQuat = 
+		const auto BefreControllerQuat = 
 			Controller->GetControlRotation().Quaternion();
-		const auto AfterQuat =
-			TransformQuatToDestSpace(BeforeQuat);
+		const auto AfterControllerQUat =
+			TransformQuatToDestSpace(BefreControllerQuat);
 		
 		Player->GetMovementComponent()->Velocity = AfterVelocity;
-		Player->GetController()->SetControlRotation(AfterQuat.Rotator());
+		Player->GetController()->SetControlRotation(AfterControllerQUat.Rotator());
+		
+		// character always on the ground straightly, so
+		// rotate character actor by only axis z(yaw)
+		FRotator PlayerActorRotator(
+			0.0, AfterQuat.Rotator().Yaw, 0.0);
+
+		Actor.SetActorRotation(PlayerActorRotator);
+
+		return;
 	}
-	
-	const auto BeforeQuat = Actor.GetActorQuat();
-	const auto AfterQuat =
-		TransformQuatToDestSpace(BeforeQuat);
+
+	Actor.SetActorRotation(AfterQuat);
 
 	Actor.GetRootComponent()->ComponentVelocity = AfterVelocity;
 	auto PrimitiveComponent = 
 		static_cast<UPrimitiveComponent*>(Actor.GetComponentByClass(UPrimitiveComponent::StaticClass()));
 	PrimitiveComponent->SetAllPhysicsLinearVelocity(AfterVelocity, false);
-	Actor.SetActorRotation(AfterQuat);
 }
 
 void APortal::RemoveClone(TObjectPtr<AActor> Actor)
