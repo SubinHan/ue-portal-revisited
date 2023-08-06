@@ -209,7 +209,7 @@ void APortal::UpdateClones()
 			FRotator ActorRotator(0.0, CloneRotator.Yaw, 0.0);
 			const auto CameraRotator =
 				OriginalPlayer->GetFirstPersonCameraComponent()->GetRelativeRotation();
-			ClonePlayer->SetActorRotation(ActorRotator);
+			ClonePlayer->SetActorRotation(CloneRotator);
 			ClonePlayer->GetFirstPersonCameraComponent()->
 				SetRelativeRotation(CameraRotator);
 			continue;
