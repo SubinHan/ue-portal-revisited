@@ -77,6 +77,8 @@ public:
 	void SetPortalTexture(TObjectPtr<UTextureRenderTarget2D> NewTexture);
 
 private:
+	TObjectPtr<UBlueprint> CharacterBlueprint;
+
 	TObjectPtr<APortal> LinkedPortal;
 	uint8 PortalStencilValue;
 
@@ -180,5 +182,6 @@ private:
 	void UpdateCapture();
 	void CheckAndTeleportOverlappingActors();
 	void TeleportActor(AActor& Actor);
+	void RemoveClone(TObjectPtr<AActor> Actor);
 
 };

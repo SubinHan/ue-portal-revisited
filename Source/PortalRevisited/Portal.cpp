@@ -33,7 +33,7 @@ void APortal::InitMeshPortalHole()
 			TEXT("PortalHole"));
 	MeshPortalHole->CastShadow = false;
 	MeshPortalHole->SetupAttachment(RootComponent);
-	//MeshPortalHole->SetVisibility(false);
+	MeshPortalHole->SetVisibility(false);
 	
 	// TODO: Hard coded rotation, object type.
 	const auto Rotator =
@@ -182,9 +182,38 @@ void APortal::UpdateClones()
 {
 	for (auto [Original, Clone] : CloneMap)
 	{
+		if (!Clone)
+			continue;
+
 		auto CloneLocation =
 			TransformPointToDestSpace(Original->GetActorLocation());
 		Clone->SetActorLocation(CloneLocation);
+
+		// If the clone is the player, set rotation and velocity
+		// by different way.
+		if (const auto OriginalPlayer =
+			Cast<APortalRevisitedCharacter>(Original))
+		{
+			auto ClonePlayer =
+				Cast<APortalRevisitedCharacter>(Clone);
+
+			auto OriginalController = OriginalPlayer->GetController();
+			const auto CloneRotation =
+				TransformQuatToDestSpace(
+					OriginalPlayer->GetActorRotation().Quaternion());
+
+			ClonePlayer->GetMovementComponent()->Velocity = 
+				OriginalPlayer->GetMovementComponent()->Velocity;
+
+			auto CloneRotator = CloneRotation.Rotator();
+			FRotator ActorRotator(0.0, CloneRotator.Yaw, 0.0);
+			const auto CameraRotator =
+				OriginalPlayer->GetFirstPersonCameraComponent()->GetRelativeRotation();
+			ClonePlayer->SetActorRotation(ActorRotator);
+			ClonePlayer->GetFirstPersonCameraComponent()->
+				SetRelativeRotation(CameraRotator);
+			continue;
+		}
 
 		auto CloneRotation =
 			TransformQuatToDestSpace(Original->GetActorQuat());
@@ -192,7 +221,10 @@ void APortal::UpdateClones()
 
 		auto PrimitiveCompOpt = GetPrimitiveComponent(Original);
 		if (!PrimitiveCompOpt)
+		{
+			UE_LOG(Portal, Warning, TEXT("Cannot set velocity of the clone."))
 			continue;
+		}
 		
 		auto CloneVelocity = Original->GetVelocity();
 		auto PrimitiveComp = *PrimitiveCompOpt;
@@ -334,19 +366,19 @@ void APortal::UpdateCapture()
 
 void APortal::CheckAndTeleportOverlappingActors()
 {
-	TArray<TObjectPtr<AActor>> TeleportedActors;
-
 	for (int i = 0; i < OverlappingActors.Num(); ++i)
 	{
 		auto OverlappingActor = OverlappingActors[i];
 		FVector ActorLocation;
 
+		bool bTest = false;
 		if (auto Player = 
 			Cast<APortalRevisitedCharacter>(OverlappingActor))
 		{
 			ActorLocation = 
 				Player->GetFirstPersonCameraComponent()
 					->GetComponentLocation();
+			bTest = true;
 		}
 		else
 		{
@@ -360,7 +392,19 @@ void APortal::CheckAndTeleportOverlappingActors()
 
 		if (bAcrossedPortal)
 		{
+			RemoveClone(OverlappingActor);
+			DebugHelper::PrintVector(ActorLocation);
 			TeleportActor(*OverlappingActor);
+			if (bTest)
+			{
+				auto Player = 
+					Cast<APortalRevisitedCharacter>(OverlappingActor);
+				DebugHelper::PrintVector(Player->GetFirstPersonCameraComponent()->GetComponentLocation());
+			}
+			else
+			{
+				DebugHelper::PrintVector(OverlappingActor->GetActorLocation());
+			}
 			PortalGun->OnActorPassedPortal(this, OverlappingActor);
 			return;
 			// Teleport only single actor in a tick
@@ -378,7 +422,7 @@ void APortal::TeleportActor(AActor& Actor)
 		TransformVectorToDestSpace(BeforeVelocity);
 	const auto AfterLocation =
 		TransformPointToDestSpace(BeforeLocation);
-
+	
 	Actor.SetActorLocation(AfterLocation, false, nullptr, ETeleportType::None);
 	 
 	if (auto Player = 
@@ -393,7 +437,6 @@ void APortal::TeleportActor(AActor& Actor)
 		
 		Player->GetMovementComponent()->Velocity = AfterVelocity;
 		Player->GetController()->SetControlRotation(AfterQuat.Rotator());
-		return;
 	}
 	
 	const auto BeforeQuat = Actor.GetActorQuat();
@@ -405,6 +448,21 @@ void APortal::TeleportActor(AActor& Actor)
 		static_cast<UPrimitiveComponent*>(Actor.GetComponentByClass(UPrimitiveComponent::StaticClass()));
 	PrimitiveComponent->SetAllPhysicsLinearVelocity(AfterVelocity, false);
 	Actor.SetActorRotation(AfterQuat);
+}
+
+void APortal::RemoveClone(TObjectPtr<AActor> Actor)
+{
+	auto Clone = CloneMap.Find(Actor);
+	if (!Clone)
+	{
+		DebugHelper::PrintText("Map failed");
+		return;
+	}
+	
+	CloneMap.Remove(Actor);
+	GWorld->DestroyActor(*Clone);
+	LinkedPortal->RemoveIgnoredActor(*Clone);
+	RemoveIgnoredActor(*Clone);
 }
 
 // Sets default values
@@ -425,6 +483,14 @@ APortal::APortal()
 	InitPortalInner();
 	InitPortalCamera();
 	InitWallDissolver();
+
+	Asset<UBlueprint> CharacterAsset(
+		TEXT("Blueprint'/Game/FirstPerson/Blueprints/BP_FirstPersonCharacter.BP_FirstPersonCharacter'"));
+
+	if (CharacterAsset.Object)
+	{
+		CharacterBlueprint = CharacterAsset.Object;
+	}
 
 	UE_LOG(Portal, Log, TEXT("Portal created."));
 }
@@ -482,9 +548,9 @@ void APortal::BeginPlay()
 void APortal::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	CheckAndTeleportOverlappingActors();
 	UpdateClones();
 	UpdateCapture();
+	CheckAndTeleportOverlappingActors();
 }
 
 void APortal::RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPrimitiveComponent> Component)
@@ -500,18 +566,10 @@ void APortal::RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPri
 	// Ignore overlapping actors already.
 	if (OverlappingActors.Contains(Actor))
 		return;
-
+	
 	Component->SetCollisionProfileName(TEXT(PORTAL_COLLISION_PROFILE_NAME));
 	OverlappingActors.AddUnique(Actor);
 	
-	TArray<TObjectPtr<USceneComponent>> ChildComponents;
-	Actor->GetRootComponent()->GetChildrenComponents(true, ChildComponents);
-
-	for (auto Child : ChildComponents)
-	{
-		DebugHelper::PrintText(Child->GetName());
-	}
-
 	auto SpawnParams = FActorSpawnParameters();
 	SpawnParams.Template = Actor;
 	
@@ -524,14 +582,47 @@ void APortal::RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPri
 	bStopRegistering = true;
 	LinkedPortal->bStopRegistering = true;
 
-	TObjectPtr<AActor> Clone = GWorld->SpawnActor<AStaticMeshActor>(
-		LocationDifference,
-		FRotator::ZeroRotator,
-		SpawnParams);
+	//TObjectPtr<AActor> Clone = GWorld->SpawnActor<AStaticMeshActor>(
+	//	LocationDifference,
+	//	FRotator::ZeroRotator,
+	//	SpawnParams);
+
+	TObjectPtr<AActor> Clone = nullptr;
 
 	if (!Clone)
 	{
-		UE_LOG(Portal, Warning, TEXT("Cloning failed."))
+		Clone = DuplicateObject(Actor, Actor->GetOuter());
+		Clone->SetActorTransform(Actor->GetActorTransform());
+		Clone->RegisterAllComponents();
+
+		if (auto ClonePrimitiveCompOpt =
+			GetPrimitiveComponent(Clone))
+		{
+			(*ClonePrimitiveCompOpt)->SetCollisionProfileName(TEXT(PORTAL_COLLISION_PROFILE_NAME));
+		}
+
+		auto OriginalPlayer = Cast<APortalRevisitedCharacter>(Actor);
+		auto ClonePlayer = Cast<APortalRevisitedCharacter>(Clone);
+		
+		if (OriginalPlayer && ClonePlayer)
+			ClonePlayer->GetMesh1P()->SetLeaderPoseComponent(OriginalPlayer->GetMesh1P());
+
+		Clone->SetActorLocation(DestLocation);
+
+		//Clone = GWorld->SpawnActor<APortalRevisitedCharacter>(
+		//	CharacterBlueprint->GeneratedClass,
+		//	LocationDifference,
+		//	FRotator::ZeroRotator,
+		//	SpawnParams);
+	}
+	
+
+	if (!Clone)
+	{
+		bStopRegistering = false;
+		LinkedPortal->bStopRegistering = false;
+
+		UE_LOG(Portal, Warning, TEXT("Cloning failed: %s"), *Actor->GetName())
 		return;
 	}
 
@@ -557,6 +648,9 @@ void APortal::OnOverlapBegin(
 	if (OtherActor == this)
 		return;
 
+	if (OtherActor->GetUniqueID() == LinkedPortal->GetUniqueID())
+		return;
+
 	if (!OtherComp)
 		return;
 	
@@ -575,20 +669,13 @@ void APortal::UnregisterOverlappingActor(TObjectPtr<AActor> Actor, UPrimitiveCom
 	if(IgnoredActors.Contains(Actor))
 		return;
 
+	if (!OverlappingActors.Contains(Actor))
+		return;
+
 	Component->SetCollisionProfileName(TEXT(STANDARD_COLLISION_PROFILE_NAME));
 	OverlappingActors.Remove(Actor);
 
-	auto Clone = CloneMap.Find(Actor);
-	if (!Clone)
-	{
-		DebugHelper::PrintText("Map failed");
-		return;
-	}
-	
-	CloneMap.Remove(Actor);
-	GWorld->DestroyActor(*Clone);
-	LinkedPortal->RemoveIgnoredActor(*Clone);
-	RemoveIgnoredActor(*Clone);
+	RemoveClone(Actor);
 }
 
 void APortal::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
@@ -598,6 +685,9 @@ void APortal::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherAct
 		return;
 
 	if (OtherActor == this)
+		return;
+	
+	if (OtherActor->GetUniqueID() == LinkedPortal->GetUniqueID())
 		return;
 
 	if (!OtherComp)
@@ -762,8 +852,13 @@ FQuat APortal::TransformQuatToDestSpace(
 
 bool APortal::IsPointInFrontOfPortal(const FVector& Point, const FVector& PortalPos, const FVector& PortalNormal)
 {
+	constexpr double EPSILON = 0.0;
 	const FVector PointToPortal = PortalPos - Point;
-	return FVector::DotProduct(PointToPortal, PortalNormal) < 0.0;
+
+	const auto Result = FVector::DotProduct(PointToPortal, PortalNormal);
+	DebugHelper::PrintText(FString::SanitizeFloat(Result));
+
+	return Result < EPSILON;
 }
 
 std::optional<TObjectPtr<APortal>> APortal::CastPortal(AActor* Actor)
