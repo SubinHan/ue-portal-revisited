@@ -19,7 +19,7 @@
 APortalRevisitedCharacter::APortalRevisitedCharacter()
 {
 	// Character doesnt have a rifle at start
-	bHasRifle = false;
+	bHasPortalGun = false;
 	
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(55.f, 96.0f);
@@ -102,12 +102,12 @@ void APortalRevisitedCharacter::Look(const FInputActionValue& Value)
 	}
 }
 
-void APortalRevisitedCharacter::SetHasRifle(bool bNewHasRifle)
+void APortalRevisitedCharacter::SetHasPortalGun(bool bNewHasPortalGun)
 {
-	bHasRifle = bNewHasRifle;
+	bHasPortalGun = bNewHasPortalGun;
 }
 
-bool APortalRevisitedCharacter::GetHasRifle()
+bool APortalRevisitedCharacter::GetHasPortalGun()
 {
-	return bHasRifle;
+	return bHasPortalGun;
 }

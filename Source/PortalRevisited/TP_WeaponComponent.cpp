@@ -78,8 +78,8 @@ void UTP_WeaponComponent::AttachWeapon(APortalRevisitedCharacter* TargetCharacte
 	FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, true);
 	AttachToComponent(Character->GetMesh1P(), AttachmentRules, FName(TEXT("GripPoint")));
 	
-	// switch bHasRifle so the animation blueprint can switch to another animation set
-	Character->SetHasRifle(true);
+	// switch bHasPortalGun so the animation blueprint can switch to another animation set
+	Character->SetHasPortalGun(true);
 
 	// Set up action bindings
 	if (APlayerController* PlayerController = Cast<APlayerController>(Character->GetController()))
