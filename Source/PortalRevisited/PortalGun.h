@@ -73,7 +73,22 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void FireOrange();
-	
+
+	UFUNCTION(BlueprintCallable, Category="PortalGun")
+	void Interact();
+
+	void ResetPortal();
+
+	void OnActorPassedPortal(
+		TObjectPtr<APortal> PassedPortal,
+		TObjectPtr<AActor> PassingActor);
+
+	virtual void TickComponent(
+		float DeltaTime,
+		ELevelTick TickType,
+		FActorComponentTickFunction* ThisTickFunction) override;
+
+private:
 	void FirePortal(TObjectPtr<APortal> TargetPortal);
 
 	void SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal);
@@ -108,23 +123,12 @@ public:
 		const FVector U, 
 		const double Delta) const;
 
-	UFUNCTION(BlueprintCallable, Category="PortalGun")
-	void Interact();
-	
 	void StopGrabbing();
 	void StartGrabbing(AActor* NewGrabbedActor);
 	bool CanGrab(AActor* Actor);
-	
+	std::optional<TObjectPtr<AActor>> GetOriginalIfClone(AActor* Actor);
 	std::optional<TObjectPtr<APortal>> GetPortalInFrontOfCharacter();
 
-	void OnActorPassedPortal(
-		TObjectPtr<APortal> PassedPortal,
-		TObjectPtr<AActor> PassingActor);
-
-	virtual void TickComponent(
-		float DeltaTime,
-		ELevelTick TickType,
-		FActorComponentTickFunction* ThisTickFunction) override;
 	void ForceGrabbedObject();
 
 private:

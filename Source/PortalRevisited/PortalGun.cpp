@@ -93,9 +93,8 @@ void UPortalGun::LinkPortals()
 	BluePortal->WallDissolver->SetDissolverName("Blue");
 	OrangePortal->WallDissolver->SetDissolverName("Orange");
 
-	BluePortal->SetIsActivated(true);
-	OrangePortal->SetIsActivated(true);
-
+	BluePortal->Deactivate();
+	OrangePortal->Deactivate();
 }
 
 void UPortalGun::AttachPortalGun(APortalRevisitedCharacter* TargetCharacter)
@@ -233,6 +232,8 @@ void UPortalGun::FirePortal(TObjectPtr<APortal> TargetPortal)
 		UE_LOG(Portal, Warning, TEXT("Wall dissolver name is not set."))
 	}
 	TargetPortal->WallDissolver->UpdateParameters(TargetPortal->GetActorLocation());
+
+	TargetPortal->Activate();
 }
 
 
@@ -696,7 +697,7 @@ void UPortalGun::Interact()
 
 		// We should move start point little because
 		// prevent to hit the wall mesh.
-		constexpr auto ForwardOffset = 30.f;
+		constexpr auto ForwardOffset = 10.f;
 		const auto DirectionDotForward =
 			OppositeDirection.Dot(OppositePortalForward);
 
@@ -734,7 +735,7 @@ void UPortalGun::Interact()
 		HitResult = HitResults[0];
 	}
 
-	const auto NewGrabbedActor = HitResult.GetActor();
+	auto NewGrabbedActor = HitResult.GetActor();
 	if (!CanGrab(NewGrabbedActor))
 	{
 		UE_LOG(Portal, Log, TEXT("Cannot grab the actor: %s"), *NewGrabbedActor->GetName());
@@ -746,8 +747,21 @@ void UPortalGun::Interact()
 		return;
 	}
 
+	if (const auto OriginalActor = GetOriginalIfClone(NewGrabbedActor))
+	{
+		UE_LOG(Portal, Log, TEXT("Grabbed clone"));
+		NewGrabbedActor = *OriginalActor;
+		bIsGrabbedObjectAcrossedPortal = !bIsGrabbedObjectAcrossedPortal;
+	}
+
 	// TODO: Start Tick
 	StartGrabbing(NewGrabbedActor);
+}
+
+void UPortalGun::ResetPortal()
+{
+	BluePortal->Deactivate();
+	OrangePortal->Deactivate();
 }
 
 void UPortalGun::StopGrabbing()
@@ -773,6 +787,16 @@ void UPortalGun::StartGrabbing(AActor* const NewGrabbedActor)
 bool UPortalGun::CanGrab(AActor* Actor)
 {
 	return Actor->IsRootComponentMovable();
+}
+
+std::optional<TObjectPtr<AActor>> UPortalGun::GetOriginalIfClone(AActor* Actor)
+{
+	if (const auto Result = BluePortal->GetOriginalIfClone(Actor))
+	{
+		return Result;
+	}
+
+	return OrangePortal->GetOriginalIfClone(Actor);
 }
 
 std::optional<TObjectPtr<APortal>> UPortalGun::GetPortalInFrontOfCharacter()

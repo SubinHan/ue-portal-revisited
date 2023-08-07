@@ -311,6 +311,17 @@ void APortal::RemoveIgnoredActor(TObjectPtr<AActor> Actor)
 	IgnoredActors.Remove(Actor);
 }
 
+std::optional<TObjectPtr<AActor>> APortal::GetOriginalIfClone(AActor* Actor)
+{
+	for (auto [Original, Clone] : CloneMap)
+	{
+		if (Clone->GetUniqueID() == Actor->GetUniqueID())
+			return Original;
+	}
+
+	return std::nullopt;
+}
+
 FVector APortal::GetPortalUpVector() const
 {
 	return GetPortalUpVector(GetActorQuat());
@@ -466,6 +477,14 @@ void APortal::RemoveClone(TObjectPtr<AActor> Actor)
 		DebugHelper::PrintText("Map failed");
 		return;
 	}
+
+	TArray<AActor*> AttachedActors;
+	(*Clone)->GetAttachedActors(AttachedActors);
+
+	for (auto AttachedActor : AttachedActors)
+	{
+		GWorld->DestroyActor(AttachedActor);
+	}
 	
 	CloneMap.Remove(Actor);
 	GWorld->DestroyActor(*Clone);
@@ -499,6 +518,8 @@ APortal::APortal()
 	{
 		CharacterBlueprint = CharacterAsset.Object;
 	}
+
+	Deactivate();
 
 	UE_LOG(Portal, Log, TEXT("Portal created."));
 }
@@ -594,40 +615,55 @@ void APortal::RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPri
 	bStopRegistering = true;
 	LinkedPortal->bStopRegistering = true;
 
-	//TObjectPtr<AActor> Clone = GWorld->SpawnActor<AStaticMeshActor>(
-	//	LocationDifference,
-	//	FRotator::ZeroRotator,
-	//	SpawnParams);
+	const auto Clone = DuplicateObject(Actor, Actor->GetOuter());
+	Clone->SetActorTransform(Actor->GetActorTransform());
+	Clone->RegisterAllComponents();
 
-	TObjectPtr<AActor> Clone = nullptr;
-
-	if (!Clone)
+	if (auto ClonePrimitiveCompOpt =
+		GetPrimitiveComponent(Clone))
 	{
-		Clone = DuplicateObject(Actor, Actor->GetOuter());
-		Clone->SetActorTransform(Actor->GetActorTransform());
-		Clone->RegisterAllComponents();
-
-		if (auto ClonePrimitiveCompOpt =
-			GetPrimitiveComponent(Clone))
-		{
-			(*ClonePrimitiveCompOpt)->SetCollisionProfileName(TEXT(PORTAL_COLLISION_PROFILE_NAME));
-		}
-
-		auto OriginalPlayer = Cast<APortalRevisitedCharacter>(Actor);
-		auto ClonePlayer = Cast<APortalRevisitedCharacter>(Clone);
-		
-		if (OriginalPlayer && ClonePlayer)
-			ClonePlayer->GetMesh1P()->SetLeaderPoseComponent(OriginalPlayer->GetMesh1P());
-
-		Clone->SetActorLocation(DestLocation);
-
-		//Clone = GWorld->SpawnActor<APortalRevisitedCharacter>(
-		//	CharacterBlueprint->GeneratedClass,
-		//	LocationDifference,
-		//	FRotator::ZeroRotator,
-		//	SpawnParams);
+		(*ClonePrimitiveCompOpt)->
+			SetCollisionProfileName(TEXT(PORTAL_COLLISION_PROFILE_NAME));
 	}
+
+	auto OriginalPlayer = Cast<APortalRevisitedCharacter>(Actor);
+	auto ClonePlayer = Cast<APortalRevisitedCharacter>(Clone);
 	
+	if (OriginalPlayer && ClonePlayer)
+	{
+		ClonePlayer->GetMesh1P()->SetLeaderPoseComponent(OriginalPlayer->GetMesh1P());
+
+		TArray<AActor*> AttachedActors;
+		OriginalPlayer->GetAttachedActors(AttachedActors);
+
+		for (auto AttachedActor : AttachedActors)
+		{
+			DebugHelper::PrintText(AttachedActor->GetName());
+
+			const auto AttachedActorClone =
+				DuplicateObject(AttachedActor, AttachedActor->GetOuter());
+			AttachedActorClone->SetActorTransform(AttachedActor->GetActorTransform());
+			AttachedActorClone->RegisterAllComponents();
+
+			FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, true);
+			AttachedActorClone->AttachToComponent(
+				ClonePlayer->GetMesh1P(),
+				AttachmentRules,
+				FName(TEXT("GripPoint")));
+
+			const auto SkinnedMeshComp = 
+				Cast<USkinnedMeshComponent>(AttachedActor);
+			const auto SkinnedMeshCompClone = 
+				Cast<USkinnedMeshComponent>(AttachedActorClone);
+			if (SkinnedMeshComp && SkinnedMeshCompClone)
+			{
+				SkinnedMeshCompClone->
+					SetLeaderPoseComponent(SkinnedMeshComp);
+			}
+		}
+	}
+
+	Clone->SetActorLocation(DestLocation);
 
 	if (!Clone)
 	{
@@ -646,9 +682,22 @@ void APortal::RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPri
 	LinkedPortal->bStopRegistering = false;
 }
 
-void APortal::SetIsActivated(bool bNewIsActivated)
+void APortal::Activate()
 {
-	bIsActivated = bNewIsActivated;
+	bIsActivated = true;
+	SetMeshesVisibility(bIsActivated);
+}
+
+void APortal::Deactivate()
+{
+	bIsActivated = false;
+	SetMeshesVisibility(bIsActivated);
+}
+
+void APortal::SetMeshesVisibility(bool bNewVisibility)
+{
+	PortalInner->SetVisibility(bNewVisibility);
+	PortalPlane->SetVisibility(bNewVisibility);
 }
 
 void APortal::OnOverlapBegin(
@@ -659,6 +708,9 @@ void APortal::OnOverlapBegin(
 	bool bFromSweep, 
 	const FHitResult& SweepResult)
 {
+	if (!bIsActivated)
+		return;
+
 	if (!OtherActor)
 		return;
 

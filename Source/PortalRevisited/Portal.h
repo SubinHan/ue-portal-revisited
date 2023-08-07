@@ -69,6 +69,7 @@ public:
 		AActor* OtherActor,
 		UPrimitiveComponent* OtherComp,
 		int32 OtherBodyIndex);
+
 	// Sets default values for this actor's properties
 	APortal();
 
@@ -98,8 +99,9 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 	void RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPrimitiveComponent> Component);
-	
-	void SetIsActivated(bool bNewIsActivated);
+	void Activate();
+	void Deactivate();
+	void SetMeshesVisibility(bool bNewVisibility);
 
 	FVector GetPortalUpVector() const;
 	FVector GetPortalRightVector() const;
@@ -115,6 +117,8 @@ public:
 	void SetPortalCustomStencilValue(uint8 NewValue);
 	void AddIgnoredActor(TObjectPtr<AActor> Actor);
 	void RemoveIgnoredActor(TObjectPtr<AActor> Actor);
+
+	std::optional<TObjectPtr<AActor>> GetOriginalIfClone(AActor* Actor);
 	
 	FVector TransformVectorToDestSpace(const FVector& Target);
 	static FVector TransformVectorToDestSpace(
