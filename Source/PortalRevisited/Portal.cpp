@@ -14,10 +14,12 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/ArrowComponent.h"
+#include "Components/AudioComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "GameFramework/PawnMovementComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "Kismet/GameplayStatics.h"
 
 DEFINE_LOG_CATEGORY(Portal);
 
@@ -176,6 +178,24 @@ void APortal::InitWallDissolver()
 	WallDissolver->SetRelativeRotation(Rotator);
 	WallDissolver->SetRelativeLocation(FVector(0.0, 0.0, 0.0));
 	WallDissolver->SetRelativeScale3D(FVector(3.0f, 2.0f, 0.2f));
+}
+
+void APortal::InitAmbientSoundComponent()
+{
+	AmbientSoundComponent =
+		CreateDefaultSubobject<UAudioComponent>("AmbientSoundComponent");
+
+	AmbientSoundComponent->SetupAttachment(RootComponent);
+	AmbientSoundComponent->bOverrideAttenuation = true;
+	//AmbientSoundComponent->AttenuationSettings =
+	//	CreateDefaultSubobject<USoundAttenuation>("SoundAttenuation");
+	//AmbientSoundComponent->AttenuationSettings->Attenuation.ConeOffset = 100.0f;
+	//AmbientSoundComponent->AttenuationSettings->Attenuation.FalloffDistance = 1500.0f;
+	//
+	auto Settings = FSoundAttenuationSettings();
+	Settings.ConeOffset = 100.f;
+	Settings.FalloffDistance = 1500.f;
+	AmbientSoundComponent->AttenuationOverrides = Settings;
 }
 
 void APortal::UpdateClones()
@@ -415,10 +435,25 @@ void APortal::CheckAndTeleportOverlappingActors()
 				DebugHelper::PrintVector(OverlappingActor->GetActorLocation());
 			}
 			PortalGun->OnActorPassedPortal(this, OverlappingActor);
+
+			// Play sound both side of the portals.
+			PlaySoundAtLocation(EnterSound, GetActorLocation());
+			LinkedPortal->PlaySoundAtLocation(
+				LinkedPortal->EnterSound,
+				LinkedPortal->GetActorLocation());
+			
 			return;
 			// Teleport only single actor in a tick
 			// to prevent side effects from changing array.
 		}
+	}
+}
+
+void APortal::PlaySoundAtLocation(USoundBase* SoundToPlay, FVector Location)
+{
+	if (SoundToPlay)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, SoundToPlay, Location);
 	}
 }
 
@@ -510,6 +545,7 @@ APortal::APortal()
 	InitPortalInner();
 	InitPortalCamera();
 	InitWallDissolver();
+	InitAmbientSoundComponent();
 
 	Asset<UBlueprint> CharacterAsset(
 		TEXT("Blueprint'/Game/FirstPerson/Blueprints/BP_FirstPersonCharacter.BP_FirstPersonCharacter'"));

@@ -26,12 +26,20 @@ class PORTALREVISITED_API APortal : public AStaticMeshActor
 
 
 public:
+	
+	/** Sound to play in ambient of portal.*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Gameplay)
+	TObjectPtr<USoundBase> AmbientSound;
+	
+	/** Sound to play if the actor pass the portal.*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Gameplay)
+	TObjectPtr<USoundBase> EnterSound;
+
 	/**
 	 * 
 	 */
 	UPROPERTY(VisibleDefaultsOnly, Category=Mesh)
 	UStaticMeshComponent* MeshPortalHole;
-
 	/**
 	 * If a dynamic mesh has overlapped this mask, then collision channel
 	 * will be changed to enter the portal ignoring static mesh behind.
@@ -52,6 +60,9 @@ public:
 	
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
 	TObjectPtr<UWallDissolver> WallDissolver;
+
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
+	TObjectPtr<UAudioComponent> AmbientSoundComponent;
 
 	UFUNCTION()
 	void OnOverlapBegin(
@@ -184,11 +195,13 @@ private:
 	void InitPortalInner();
 	void InitPortalCamera();
 	void InitWallDissolver();
+	void InitAmbientSoundComponent();
 	
 	void UpdateClones();
 	void UpdateCaptureCamera();
 	void UpdateCapture();
 	void CheckAndTeleportOverlappingActors();
+	void PlaySoundAtLocation(USoundBase* SoundToPlay, FVector Location);
 	void TeleportActor(AActor& Actor);
 	void RemoveClone(TObjectPtr<AActor> Actor);
 

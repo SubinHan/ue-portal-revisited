@@ -28,9 +28,13 @@ public:
 	UPortalGun();
 	void LinkPortals();
 
-	/** Sound to play each time we fire */
+	/** Sound to play each time we fire blue portal*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Gameplay)
-	TObjectPtr<USoundBase> FireSound;
+	TObjectPtr<USoundBase> BlueFireSound;
+
+	/** Sound to play each time we fire orange portal*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Gameplay)
+	TObjectPtr<USoundBase> OrangeFireSound;
 	
 	/** AnimMontage to play each time we fire */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Gameplay)
@@ -67,6 +71,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void AttachPortalGun(APortalRevisitedCharacter* TargetCharacter);
+	void PlaySoundAtLocation(USoundBase* SoundToPlay, FVector Location);
+	void PlayFiringAnimation();
 
 	UFUNCTION(BlueprintCallable, Category="PortalGun")
 	void FireBlue();

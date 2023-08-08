@@ -22,6 +22,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
 #include "PhysicsEngine/PhysicsHandleComponent.h"
@@ -153,6 +154,28 @@ void UPortalGun::AttachPortalGun(APortalRevisitedCharacter* TargetCharacter)
 	}
 }
 
+void UPortalGun::PlaySoundAtLocation(USoundBase* SoundToPlay, FVector Location)
+{
+	if (SoundToPlay)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, SoundToPlay, Location);
+	}
+}
+
+void UPortalGun::PlayFiringAnimation()
+{
+	// Try and play a firing animation if specified
+	if (FireAnimation != nullptr)
+	{
+		// Get the animation object for the arms mesh
+		UAnimInstance* AnimInstance = Character->GetMesh1P()->GetAnimInstance();
+		if (AnimInstance != nullptr)
+		{
+			AnimInstance->Montage_Play(FireAnimation, 1.f);
+		}
+	}
+}
+
 void UPortalGun::FireBlue()
 {
 	UE_LOG(Portal, Log, TEXT("Fire blue portal"));
@@ -162,6 +185,8 @@ void UPortalGun::FireBlue()
 		return;
 	}
 
+	PlaySoundAtLocation(BlueFireSound, Character->GetActorLocation());
+	PlayFiringAnimation();
 	FirePortal(BluePortal);
 }
 
@@ -174,6 +199,8 @@ void UPortalGun::FireOrange()
 		return;
 	}
 
+	PlaySoundAtLocation(OrangeFireSound, Character->GetActorLocation());
+	PlayFiringAnimation();
 	FirePortal(OrangePortal);
 }
 
@@ -245,7 +272,7 @@ void UPortalGun::FirePortal(TObjectPtr<APortal> TargetPortal)
 	TargetPortal->Activate();
 }
 
-bool UPortalGun::CanPlacePortal(UPhysicalMaterial* WallPhysicalMaterial)
+bool UPortalGun:: CanPlacePortal(UPhysicalMaterial* WallPhysicalMaterial)
 {
 
 	return WallPhysicalMaterial->SurfaceType == WHITE_SURFACE;
