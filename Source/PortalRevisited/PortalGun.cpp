@@ -23,6 +23,7 @@
 #include "Engine/StaticMeshActor.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "PhysicalMaterials/PhysicalMaterial.h"
 #include "PhysicsEngine/PhysicsHandleComponent.h"
 
 constexpr float PORTAL_GUN_RANGE = 3000.f;
@@ -31,6 +32,7 @@ constexpr float PORTAL_GUN_GRAB_OFFSET = 200.f;
 constexpr float PORTAL_GUN_GRAB_FORCE_MULTIPLIER = 5.f;
 constexpr auto PORTAL_UP_SIZE_HALF = 150.f;
 constexpr auto PORTAL_RIGHT_SIZE_HALF = 100.f;
+constexpr auto WHITE_SURFACE = EPhysicalSurface::SurfaceType1;
 
 // OverlapAllDynamic Preset blocks ECC_GameTraceChannel3,
 // so it can uses also to query if there is a portal or not.
@@ -186,6 +188,7 @@ void UPortalGun::FirePortal(TObjectPtr<APortal> TargetPortal)
 	FCollisionQueryParams CollisionParams;
 	CollisionParams.AddIgnoredActor(Character);
 	CollisionParams.AddIgnoredActor(TargetPortal);
+	CollisionParams.bReturnPhysicalMaterial = true;
 	
 	TArray<FHitResult> HitResults;
 
@@ -212,6 +215,12 @@ void UPortalGun::FirePortal(TObjectPtr<APortal> TargetPortal)
 		return;
 	}
 
+	if (!CanPlacePortal(HitResult.PhysMaterial.Get()))
+	{
+		UE_LOG(Portal, Log, TEXT("Hit non-white wall."))
+		return;
+	}
+
 	PortalCenterAndNormal PortalPoint
 		= CalculateCorrectPortalCenter(HitResult, *TargetPortal);
 
@@ -234,6 +243,12 @@ void UPortalGun::FirePortal(TObjectPtr<APortal> TargetPortal)
 	TargetPortal->WallDissolver->UpdateParameters(TargetPortal->GetActorLocation());
 
 	TargetPortal->Activate();
+}
+
+bool UPortalGun::CanPlacePortal(UPhysicalMaterial* WallPhysicalMaterial)
+{
+
+	return WallPhysicalMaterial->SurfaceType == WHITE_SURFACE;
 }
 
 

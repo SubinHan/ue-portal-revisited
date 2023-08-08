@@ -90,7 +90,12 @@ public:
 
 private:
 	void FirePortal(TObjectPtr<APortal> TargetPortal);
-
+	/**
+	 * @brief 
+	 * @param The actor like walls 
+	 * @return true if the portal can be placed on the actor.
+	 */
+	bool CanPlacePortal(UPhysicalMaterial* WallPhysicalMaterial);
 	void SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal);
 	
 	TArray<TObjectPtr<AStaticMeshActor>>& GetCollisionPlanes(
