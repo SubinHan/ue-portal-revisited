@@ -639,7 +639,6 @@ void APortal::RemoveClone(TObjectPtr<AActor> Actor)
 	auto Clone = CloneMap.Find(Actor);
 	if (!Clone)
 	{
-		DebugHelper::PrintText("Map failed");
 		return;
 	}
 
@@ -722,7 +721,7 @@ void APortal::SetPortalRecurRenderTarget(TObjectPtr<UTextureRenderTarget2D> NewT
 	GWorld->GetFirstPlayerController()->GetViewportSize(
 			ResolutionX,
 			ResolutionY);
-
+	
 	PortalRecurTexture->SizeX = ResolutionX;
 	PortalRecurTexture->SizeY = ResolutionY;
 	PortalRecurTexture->RenderTargetFormat = RTF_RGBA16f;
@@ -792,8 +791,6 @@ void APortal::RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPri
 
 		for (auto AttachedActor : AttachedActors)
 		{
-			DebugHelper::PrintText(AttachedActor->GetName());
-
 			const auto AttachedActorClone =
 				DuplicateObject(AttachedActor, AttachedActor->GetOuter());
 			AttachedActorClone->SetActorTransform(AttachedActor->GetActorTransform());
@@ -895,7 +892,13 @@ void APortal::UnregisterOverlappingActor(TObjectPtr<AActor> Actor, UPrimitiveCom
 	if (!OverlappingActors.Contains(Actor))
 		return;
 
-	Component->SetCollisionProfileName(TEXT(STANDARD_COLLISION_PROFILE_NAME));
+	// If the actor overlapping to both portals, then set collision
+	// profile only one side of the portal.
+	if (!LinkedPortal->OverlappingActors.Contains(Actor))
+	{
+		Component->SetCollisionProfileName(TEXT(STANDARD_COLLISION_PROFILE_NAME));
+	}
+	
 	OverlappingActors.Remove(Actor);
 
 	RemoveClone(Actor);
