@@ -3,11 +3,8 @@
 
 #include "WallDissolver.h"
 
-#include <stdexcept>
-
 #include "DebugHelper.h"
 #include "Materials/MaterialParameterCollection.h"
-#include "Kismet/KismetMaterialLibrary.h"
 #include "Materials/MaterialParameterCollectionInstance.h"
 
 template<class T>
@@ -46,7 +43,7 @@ FString UWallDissolver::GetDissolverName()
 void UWallDissolver::UpdateParameters(const FVector RootLocation)
 {
 	auto MatParamCollectionInstance =
-		GWorld->GetParameterCollectionInstance(MatParamCollection);
+		GetWorld()->GetParameterCollectionInstance(MatParamCollection);
 
 	auto LocationParameterName =
 		PARAMETER_NAME_LOCATION + DissolverName;

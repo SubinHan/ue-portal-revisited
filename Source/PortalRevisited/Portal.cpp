@@ -6,10 +6,13 @@
 #include "Private/DebugHelper.h"
 #include <stdexcept>
 
+#include "ImageUtils.h"
 #include "PortalGun.h"
 #include "WallDissolver.h"
 #include "PortalUtil.h"
 #include "PortalRevisitedCharacter.h"
+#include "PortalClipLocation.h"
+#include "RenderingThread.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -19,7 +22,10 @@
 #include "GameFramework/PawnMovementComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "Exporters/TextureExporterTGA.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetMathLibrary.h"
+#include "Serialization/BufferArchive.h"
 
 DEFINE_LOG_CATEGORY(Portal);
 
@@ -27,6 +33,42 @@ template<class T>
 using Asset = ConstructorHelpers::FObjectFinder<T>;
 
 constexpr uint8 DEFAULT_STENCIL_VALUE = 1;
+
+// Sets default values
+APortal::APortal()
+{
+ 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
+	PrimaryActorTick.bCanEverTick = true;
+
+	SetMobility(EComponentMobility::Movable);
+
+	RootComponent->SetRelativeRotation(
+		FRotator::MakeFromEuler(
+			FVector(0.0, 0.0, 0.0)));
+
+	InitMeshPortalHole();
+	InitPortalEnterMask();
+	InitPortalPlane();
+	InitPortalInner();
+	InitPortalCamera();
+	InitWallDissolver();
+	InitAmbientSoundComponent();
+	PortalClipLocation = 
+		CreateDefaultSubobject<UPortalClipLocation>("PortalClipLocation");
+	PortalClipLocation->SetupAttachment(RootComponent);
+
+	Asset<UBlueprint> CharacterAsset(
+		TEXT("Blueprint'/Game/FirstPerson/Blueprints/BP_FirstPersonCharacter.BP_FirstPersonCharacter'"));
+
+	if (CharacterAsset.Object)
+	{
+		CharacterBlueprint = CharacterAsset.Object;
+	}
+
+	Deactivate();
+
+	UE_LOG(Portal, Log, TEXT("Portal created."));
+}
 
 void APortal::InitMeshPortalHole()
 {
@@ -101,10 +143,6 @@ void APortal::InitPortalPlane()
 	{
 		PortalPlane->SetMaterial(0, PortalPlaneMaterial.Object);
 	}
-
-	PortalPlane->SetRenderCustomDepth(true);
-	PortalStencilValue = DEFAULT_STENCIL_VALUE;
-	PortalPlane->SetCustomDepthStencilValue(PortalStencilValue);
 }
 
 void APortal::InitPortalInner()
@@ -135,10 +173,6 @@ void APortal::InitPortalInner()
 	{
 		PortalInner->SetMaterial(0, PortalInnerMaterial.Object);
 	}
-
-	PortalInner->SetRenderCustomDepth(true);
-	PortalStencilValue = DEFAULT_STENCIL_VALUE;
-	PortalInner->SetCustomDepthStencilValue(PortalStencilValue);
 }
 
 void APortal::InitPortalCamera()
@@ -147,7 +181,7 @@ void APortal::InitPortalCamera()
 		CreateDefaultSubobject<USceneCaptureComponent2D>("PortalCamera");
 	PortalCamera->SetupAttachment(RootComponent);
 
-	PortalCamera->CaptureSource = SCS_FinalColorHDR;
+	PortalCamera->CaptureSource = SCS_SceneColorHDR;
 	PortalCamera->ShowFlags.SetLocalExposure(false);
 	PortalCamera->ShowFlags.SetEyeAdaptation(false);
 	PortalCamera->ShowFlags.SetMotionBlur(false);
@@ -162,6 +196,10 @@ void APortal::InitPortalCamera()
 	PortalCamera->bCaptureEveryFrame = false;
 	PortalCamera->bCaptureOnMovement = false;
 	PortalCamera->bAlwaysPersistRenderingState = true;
+	PortalCamera->CompositeMode = SCCM_Composite;
+
+	PortalCamera->bUseCustomProjectionMatrix = true;
+
 
 	PortalCamera->TextureTarget = nullptr;
 }
@@ -187,11 +225,6 @@ void APortal::InitAmbientSoundComponent()
 
 	AmbientSoundComponent->SetupAttachment(RootComponent);
 	AmbientSoundComponent->bOverrideAttenuation = true;
-	//AmbientSoundComponent->AttenuationSettings =
-	//	CreateDefaultSubobject<USoundAttenuation>("SoundAttenuation");
-	//AmbientSoundComponent->AttenuationSettings->Attenuation.ConeOffset = 100.0f;
-	//AmbientSoundComponent->AttenuationSettings->Attenuation.FalloffDistance = 1500.0f;
-	//
 	auto Settings = FSoundAttenuationSettings();
 	Settings.ConeOffset = 100.f;
 	Settings.FalloffDistance = 1500.f;
@@ -250,53 +283,23 @@ void APortal::UpdateClones()
 	}
 }
 
-void APortal::UpdateCaptureCamera()
+APortal::LocationAndRotation APortal::CalculatePortalCameraLocationAndRotation(
+	const FVector& CameraLocation,
+	const FQuat& CameraQuat)
 {
 	if (!LinkedPortal)
 	{
 		UE_LOG(Portal, Error, TEXT("Portal isn't linked. Please link the portal."));
-		return;
+		return std::nullopt;
 	}
 
-	auto PlayerCamera = GWorld->GetFirstPlayerController()->PlayerCameraManager;
-
-	auto PlayerCameraLocation = PlayerCamera->GetCameraLocation();
-	auto PlayerCameraQuat = PlayerCamera->GetActorQuat();
-
-	const auto ThisLocation = GetPortalPlaneLocation();
-	const auto ThisForward = GetActorForwardVector();
-	const auto ThisRight = GetActorRightVector();
-	const auto ThisUp = GetActorUpVector();
-	const auto ThisQuat = GetActorQuat();
-
-	const auto TargetLocation = LinkedPortal->GetPortalPlaneLocation();
-	const auto TargetForward = LinkedPortal->GetActorForwardVector();
-	const auto TargetRight = LinkedPortal->GetActorRightVector();
-	const auto TargetUp = LinkedPortal->GetActorUpVector();
-	const auto TargetQuat = LinkedPortal->GetActorQuat();
-
 	const auto ResultLocation = TransformPointToDestSpace(
-		PlayerCameraLocation,
-		ThisLocation,
-		ThisForward,
-		ThisRight,
-		ThisUp,
-		TargetLocation,
-		-TargetForward,
-		-TargetRight,
-		TargetUp);
+		CameraLocation);
 
 	const auto ResultQuat = TransformQuatToDestSpace(
-		PlayerCameraQuat,
-		ThisQuat,
-		TargetQuat,
-		TargetUp);
+		CameraQuat);
 
-	PortalCamera->SetWorldLocationAndRotation(
-		ResultLocation,
-		ResultQuat);
-	
-	DebugHelper::DrawPoint(ThisLocation);
+	return std::make_pair(ResultLocation, ResultQuat);
 }
 
 FVector APortal::GetPortalPlaneLocation() const
@@ -304,21 +307,9 @@ FVector APortal::GetPortalPlaneLocation() const
 	return PortalPlane->GetComponentLocation();
 }
 
-uint8 APortal::GetPortalCustomStencilValue() const
-{
-	return PortalStencilValue;
-}
-
 TObjectPtr<APortal> APortal::GetLink() const
 {
 	return LinkedPortal;
-}
-
-void APortal::SetPortalCustomStencilValue(uint8 NewValue)
-{
-	PortalStencilValue = NewValue;
-	PortalInner->SetCustomDepthStencilValue(PortalStencilValue);
-	PortalPlane->SetCustomDepthStencilValue(PortalStencilValue);
 }
 
 void APortal::AddIgnoredActor(TObjectPtr<AActor> Actor)
@@ -372,25 +363,170 @@ FVector APortal::GetPortalForwardVector(const FQuat& PortalRotation) const
 	return PortalRotation.GetForwardVector();
 }
 
-void APortal::UpdateCapture()
+void APortal::UpdateCapture(float DeltaTime)
 {
 	if (!PortalCamera->TextureTarget)
 	{
-		UE_LOG(Portal, Error, TEXT("Portal render target isn't set"));
+		UE_LOG(Portal, Error, TEXT("Update capture failed: Portal render target isn't set"));
 		return;
 	}
 
 	if (!LinkedPortal)
 	{
-		UE_LOG(Portal, Error, TEXT("Portal isn't linked."));
+		UE_LOG(Portal, Error, TEXT("Update capture failed: Portal isn't linked."));
 		return;
 	}
 
-	UpdateCaptureCamera();
+	// Get the Projection Matrix
+	const auto PlayerCameraManager =
+		GWorld->GetFirstPlayerController()->PlayerCameraManager;
+	
+	{
+		// Set camera projection matrix of the portal camera.
+		FMatrix UnusedViewMatrix;
+		FMatrix ProjectionMatrix;
+		FMatrix UnusedViewProjectionMatrix;
+		
+		UGameplayStatics::GetViewProjectionMatrix(
+			PlayerCameraManager->GetCameraCacheView(),
+			UnusedViewMatrix,
+			ProjectionMatrix,
+			UnusedViewProjectionMatrix);
+
+		PortalCamera->CustomProjectionMatrix = ProjectionMatrix;
+	}
+
+	auto PlayerCameraLocation = 
+		PlayerCameraManager->GetCameraLocation();
+	auto PlayerCameraRotation = 
+		PlayerCameraManager->GetCameraRotation().Quaternion();
+
+	constexpr auto MAX_RECURSION = 2;
+	CapturePortalSceneRecur(
+		DeltaTime,
+		PlayerCameraLocation,
+		PlayerCameraRotation, 
+		MAX_RECURSION);
+}
+
+void APortal::CapturePortalSceneRecur(
+	float DeltaTime,
+	const FVector& CurrentCameraLocation,
+	const FQuat& CurrentCameraRotation, int RecursionRemaining)
+{
+	if (RecursionRemaining <= 0)
+		return;
+	
+	const auto CameraLocationAndRotationOpt =
+		CalculatePortalCameraLocationAndRotation(
+			CurrentCameraLocation,
+			CurrentCameraRotation);
+
+	if (!CameraLocationAndRotationOpt)
+	{
+		UE_LOG(Portal, Error, TEXT("Update capture failed."));
+		return;
+	}
+
+	const auto [CameraLocation, CameraRotation] =
+		*CameraLocationAndRotationOpt;
+
+	// If the camera is front of the portal so the captured screen
+	// will be never shown, then return.
+	const auto LinkedPortalForward = 
+		LinkedPortal->GetPortalForwardVector();
+
+	if (IsPointInFrontOfPortal(
+		CameraLocation, 
+		LinkedPortal->GetPortalPlaneLocation(), 
+		LinkedPortalForward))
+	{
+		return;
+	}
+
+	// If the camera doesn't looking at the linked portal, so
+	// the captured screen will be never shown, then return.
+	const auto CameraForward =
+		UKismetMathLibrary::GetForwardVector(CameraRotation.Rotator());
+
+	if (CameraForward.Dot(LinkedPortalForward) < 0.0)
+	{
+		return;
+	}
+
+	CapturePortalSceneRecur(
+		DeltaTime, 
+		CameraLocation, 
+		CameraRotation, RecursionRemaining - 1);
+
+	// If the recursion is final, set material of the portal
+	// to image captured before to present infinite recursion
+	// portal. It will be changed to original material after
+	// capturing scene.
+	UMaterialInterface* OriginalMaterial = nullptr;
+	if (RecursionRemaining == 1)
+	{
+		OriginalMaterial = PortalPlane->GetMaterial(0);
+		PortalPlane->SetMaterial(0, PortalRecurMaterial);
+	}
+
+	PortalCamera->SetWorldLocationAndRotation(
+		CameraLocation,
+		CameraRotation);
 	PortalCamera->ClipPlaneBase = LinkedPortal->GetPortalPlaneLocation();
 	PortalCamera->ClipPlaneNormal = LinkedPortal->GetActorForwardVector();
-
 	PortalCamera->CaptureScene();
+
+	if (RecursionRemaining > 2)
+		return;
+	// In this case, we will save location of the farthest,
+	// and second farthest portal in the clip space. We can
+	// determine where the portal rectangle is in the render
+	// target, and draw it recursively on the portal so
+	// it generates an effect that the portal stands infinitely.
+
+	// Set camera projection matrix of the portal camera.
+	FMatrix UnusedViewMatrix;
+	FMatrix UnusedProjectionMatrix;
+	FMatrix ViewProjectionMatrix;
+
+	FMinimalViewInfo ViewInfo;
+	PortalCamera->GetCameraView(DeltaTime, ViewInfo);
+	UGameplayStatics::GetViewProjectionMatrix(
+		ViewInfo,
+		UnusedViewMatrix,
+		UnusedProjectionMatrix,
+		ViewProjectionMatrix);
+
+	// Last recursion, farthest portal
+	if (RecursionRemaining == 1)
+	{
+		PortalClipLocation->UpdateBackPortalClipLocation(
+			ViewProjectionMatrix,
+			this);
+		PortalPlane->SetMaterial(0, OriginalMaterial);
+
+		ENQUEUE_RENDER_COMMAND(PortalTextureCopy)(
+			[this](FRHICommandListImmediate& RHICmdList)
+			{
+				auto SrcTexture =
+					PortalTexture->GetRenderTargetResource()->GetRenderTargetTexture();
+
+				auto DestTexture = 
+					PortalRecurTexture->GetRenderTargetResource()->GetRenderTargetTexture();
+
+				FRHICopyTextureInfo Info{};
+				RHICmdList.CopyTexture(SrcTexture,
+					DestTexture,
+					Info);
+			});
+		return;
+	}
+
+	// Before last recursion, second farthest portal
+	PortalClipLocation->UpdateFrontPortalClipLocation(
+		ViewProjectionMatrix,
+		this);
 }
 
 void APortal::CheckAndTeleportOverlappingActors()
@@ -399,15 +535,13 @@ void APortal::CheckAndTeleportOverlappingActors()
 	{
 		auto OverlappingActor = OverlappingActors[i];
 		FVector ActorLocation;
-
-		bool bTest = false;
+		
 		if (auto Player = 
 			Cast<APortalRevisitedCharacter>(OverlappingActor))
 		{
 			ActorLocation = 
 				Player->GetFirstPersonCameraComponent()
 					->GetComponentLocation();
-			bTest = true;
 		}
 		else
 		{
@@ -421,19 +555,8 @@ void APortal::CheckAndTeleportOverlappingActors()
 
 		if (bAcrossedPortal)
 		{
-			RemoveClone(OverlappingActor);
-			DebugHelper::PrintVector(ActorLocation);
+			//RemoveClone(OverlappingActor);
 			TeleportActor(*OverlappingActor);
-			if (bTest)
-			{
-				auto Player = 
-					Cast<APortalRevisitedCharacter>(OverlappingActor);
-				DebugHelper::PrintVector(Player->GetFirstPersonCameraComponent()->GetComponentLocation());
-			}
-			else
-			{
-				DebugHelper::PrintVector(OverlappingActor->GetActorLocation());
-			}
 			PortalGun->OnActorPassedPortal(this, OverlappingActor);
 
 			// Play sound both side of the portals.
@@ -527,39 +650,6 @@ void APortal::RemoveClone(TObjectPtr<AActor> Actor)
 	RemoveIgnoredActor(*Clone);
 }
 
-// Sets default values
-APortal::APortal()
-{
- 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
-
-	SetMobility(EComponentMobility::Movable);
-
-	RootComponent->SetRelativeRotation(
-		FRotator::MakeFromEuler(
-			FVector(0.0, 0.0, 0.0)));
-
-	InitMeshPortalHole();
-	InitPortalEnterMask();
-	InitPortalPlane();
-	InitPortalInner();
-	InitPortalCamera();
-	InitWallDissolver();
-	InitAmbientSoundComponent();
-
-	Asset<UBlueprint> CharacterAsset(
-		TEXT("Blueprint'/Game/FirstPerson/Blueprints/BP_FirstPersonCharacter.BP_FirstPersonCharacter'"));
-
-	if (CharacterAsset.Object)
-	{
-		CharacterBlueprint = CharacterAsset.Object;
-	}
-
-	Deactivate();
-
-	UE_LOG(Portal, Log, TEXT("Portal created."));
-}
-
 void APortal::LinkPortals(TObjectPtr<APortal> NewTarget)
 {
 	if (NewTarget.Get() == this)
@@ -577,7 +667,7 @@ void APortal::RegisterPortalGun(TObjectPtr<UPortalGun> NewPortalGun)
 	PortalGun = NewPortalGun;
 }
 
-void APortal::SetPortalTexture(TObjectPtr<UTextureRenderTarget2D> NewTexture)
+void APortal::SetPortalRenderTarget(TObjectPtr<UTextureRenderTarget2D> NewTexture)
 {
 	PortalTexture = NewTexture;
 	
@@ -593,14 +683,54 @@ void APortal::SetPortalTexture(TObjectPtr<UTextureRenderTarget2D> NewTexture)
 	PortalTexture->RenderTargetFormat = RTF_RGBA16f;
 	PortalTexture->Filter = TF_Bilinear;
 	PortalTexture->ClearColor = FLinearColor::Black;
-	PortalTexture->TargetGamma = 2.2f;
+	PortalTexture->TargetGamma = 0.0f;
 	PortalTexture->bNeedsTwoCopies = false;
-
 	PortalTexture->bAutoGenerateMips = false;
 
 	PortalTexture->UpdateResource();
 
 	PortalCamera->TextureTarget = PortalTexture;
+}
+
+void APortal::SetPortalMaterial(TObjectPtr<UMaterial> NewMaterial)
+{
+	if (!NewMaterial)
+	{
+		return;
+	}
+
+	PortalMaterial = NewMaterial;
+
+	PortalPlane->SetMaterial(0, NewMaterial);
+	PortalInner->SetMaterial(0, NewMaterial);
+}
+
+void APortal::SetPortalRecurRenderTarget(TObjectPtr<UTextureRenderTarget2D> NewTexture)
+{
+	PortalRecurTexture = NewTexture;
+	
+	int32 ResolutionX = 1920;
+	int32 ResolutionY = 1080;
+
+	GWorld->GetFirstPlayerController()->GetViewportSize(
+			ResolutionX,
+			ResolutionY);
+
+	PortalRecurTexture->SizeX = ResolutionX;
+	PortalRecurTexture->SizeY = ResolutionY;
+	PortalRecurTexture->RenderTargetFormat = RTF_RGBA16f;
+	PortalRecurTexture->Filter = TF_Bilinear;
+	PortalRecurTexture->ClearColor = FLinearColor::Black;
+	PortalRecurTexture->TargetGamma = 0.0f;
+	PortalRecurTexture->bNeedsTwoCopies = false;
+	PortalRecurTexture->bAutoGenerateMips = false;
+
+	PortalRecurTexture->UpdateResource();
+}
+
+void APortal::SetPortalRecurMaterial(TObjectPtr<UMaterial> NewMaterial)
+{
+	PortalRecurMaterial = NewMaterial;
 }
 
 // Called when the game starts or when spawned
@@ -618,7 +748,7 @@ void APortal::Tick(float DeltaTime)
 		return;
 
 	UpdateClones();
-	UpdateCapture();
+	UpdateCapture(DeltaTime);
 	CheckAndTeleportOverlappingActors();
 }
 

@@ -50,8 +50,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portal")
 	TObjectPtr<APortal> OrangePortal;
 
-	TObjectPtr<UTextureRenderTarget2D> BluePortalTexture;
-	TObjectPtr<UTextureRenderTarget2D> OrangePortalTexture;
+	TObjectPtr<UTextureRenderTarget2D> BluePortalRenderTarget;
+	TObjectPtr<UTextureRenderTarget2D> OrangePortalRenderTarget;
+	TObjectPtr<UMaterial> BluePortalMaterial;
+	TObjectPtr<UMaterial> OrangePortalMaterial;
+	TObjectPtr<UTextureRenderTarget2D> BluePortalRecurRenderTarget;
+	TObjectPtr<UTextureRenderTarget2D> OrangePortalRecurRenderTarget;
+	TObjectPtr<UMaterial> BluePortalRecurMaterial;
+	TObjectPtr<UMaterial> OrangePortalRecurMaterial;
 
 	/** MappingContext */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))

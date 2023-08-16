@@ -55,21 +55,103 @@ UPortalGun::UPortalGun()
 			TEXT("StaticMesh'/Engine/BasicShapes/Sphere.Sphere'"));
 	}
 
-	using TextureAsset =
+	using RenderTargetAsset =
 		ConstructorHelpers::FObjectFinder<UTextureRenderTarget2D>;
 
-	TextureAsset BluePortalTextureAsset(
+	RenderTargetAsset BluePortalRenderTargetAsset(
 		TEXT("TextureRenderTarget2D'/Game/RT_BluePortal.RT_BluePortal'"));
-	TextureAsset OrangePortalTextureAsset(
+	RenderTargetAsset OrangePortalRenderTargetAsset(
 		TEXT("TextureRenderTarget2D'/Game/RT_OrangePortal.RT_OrangePortal'"));
 
-	if (BluePortalTextureAsset.Object)
+	if (BluePortalRenderTargetAsset.Object)
 	{
-		BluePortalTexture = BluePortalTextureAsset.Object;
+		BluePortalRenderTarget = BluePortalRenderTargetAsset.Object;
 	}
-	if (OrangePortalTextureAsset.Object)
+	else
 	{
-		OrangePortalTexture = OrangePortalTextureAsset.Object;
+		UE_LOG(Portal, Warning, TEXT("Cannot find render target asset named by RT_BluePortal"));
+	}
+
+	if (OrangePortalRenderTargetAsset.Object)
+	{
+		OrangePortalRenderTarget = OrangePortalRenderTargetAsset.Object;
+	}
+	else
+	{
+		UE_LOG(Portal, Warning, TEXT("Cannot find render target asset named by RT_OrangePortal"));
+	}
+	
+	RenderTargetAsset BluePortalRecurRenderTargetAsset(
+		TEXT("TextureRenderTarget2D'/Game/RT_BluePortalRecur.RT_BluePortalRecur'"));
+	RenderTargetAsset OrangePortalRecurRenderTargetAsset(
+		TEXT("TextureRenderTarget2D'/Game/RT_OrangePortalRecur.RT_OrangePortalRecur'"));
+
+	if (BluePortalRecurRenderTargetAsset.Object)
+	{
+		BluePortalRecurRenderTarget = BluePortalRecurRenderTargetAsset.Object;
+	}
+	else
+	{
+		UE_LOG(Portal, Warning, TEXT("Cannot find render target asset named by RT_BluePortalRecur"));
+	}
+
+	if (OrangePortalRecurRenderTargetAsset.Object)
+	{
+		OrangePortalRecurRenderTarget = OrangePortalRecurRenderTargetAsset.Object;
+	}
+	else
+	{
+		UE_LOG(Portal, Warning, TEXT("Cannot find render target asset named by RT_OrangePortalRecur"));
+	}
+	
+	using MaterialAsset =
+		ConstructorHelpers::FObjectFinder<UMaterial>;
+
+	MaterialAsset BluePortalMaterialAsset(
+		TEXT("/Script/Engine.Material'/Game/M_BluePortal.M_BluePortal'"));
+	MaterialAsset OrangePortalMaterialAsset(
+		TEXT("/Script/Engine.Material'/Game/M_OrangePortal.M_OrangePortal'"));
+	
+	if (BluePortalMaterialAsset.Object)
+	{
+		BluePortalMaterial = BluePortalMaterialAsset.Object;
+	}
+	else
+	{
+		UE_LOG(Portal, Warning, TEXT("Cannot find blue portal material named by M_BluePortal"));
+	}
+
+	
+	if (OrangePortalMaterialAsset.Object)
+	{
+		OrangePortalMaterial = OrangePortalMaterialAsset.Object;
+	}
+	else
+	{
+		UE_LOG(Portal, Warning, TEXT("Cannot find blue portal material named by M_OrangePortal"));
+	}
+
+	MaterialAsset BluePortalRecurMaterialAsset(
+		TEXT("/Script/Engine.Material'/Game/M_BluePortalRecur.M_BluePortalRecur'"));
+	MaterialAsset OrangePortalRecurMaterialAsset(
+		TEXT("/Script/Engine.Material'/Game/M_OrangePortalRecur.M_OrangePortalRecur'"));
+	
+	if (BluePortalRecurMaterialAsset.Object)
+	{
+		BluePortalRecurMaterial = BluePortalRecurMaterialAsset.Object;
+	}
+	else
+	{
+		UE_LOG(Portal, Warning, TEXT("Cannot find blue portal material named by M_BluePortalRecur"));
+	}
+	
+	if (OrangePortalRecurMaterialAsset.Object)
+	{
+		OrangePortalRecurMaterial = OrangePortalRecurMaterialAsset.Object;
+	}
+	else
+	{
+		UE_LOG(Portal, Warning, TEXT("Cannot find orange portal material named by M_OrangePortalRecur"));		
 	}
 
 	PrimaryComponentTick.bCanEverTick = true;
@@ -84,11 +166,17 @@ void UPortalGun::LinkPortals()
 	BluePortal->RegisterPortalGun(this);
 	OrangePortal->RegisterPortalGun(this);
 
-	BluePortal->SetPortalTexture(BluePortalTexture);
-	OrangePortal->SetPortalTexture(OrangePortalTexture);
+	BluePortal->SetPortalRenderTarget(BluePortalRenderTarget);
+	OrangePortal->SetPortalRenderTarget(OrangePortalRenderTarget);
+	
+	BluePortal->SetPortalMaterial(BluePortalMaterial);
+	OrangePortal->SetPortalMaterial(OrangePortalMaterial);
 
-	BluePortal->SetPortalCustomStencilValue(1);
-	OrangePortal->SetPortalCustomStencilValue(2);
+	BluePortal->SetPortalRecurRenderTarget(BluePortalRecurRenderTarget);
+	OrangePortal->SetPortalRecurRenderTarget(OrangePortalRecurRenderTarget);
+
+	BluePortal->SetPortalRecurMaterial(BluePortalRecurMaterial);
+	OrangePortal->SetPortalRecurMaterial(OrangePortalRecurMaterial);
 
 	PrimaryComponentTick.AddPrerequisite(this, BluePortal->PrimaryActorTick);
 	PrimaryComponentTick.AddPrerequisite(this, OrangePortal->PrimaryActorTick);	
@@ -114,7 +202,7 @@ void UPortalGun::AttachPortalGun(APortalRevisitedCharacter* TargetCharacter)
 		return;
 	}
 
-	if (!BluePortalTexture || !OrangePortalTexture)
+	if (!BluePortalRenderTarget || !OrangePortalRenderTarget)
 	{
 		UE_LOG(Portal, Error, TEXT("Cannot find portal textures.(RT_BluePortal, RT_OrangePortal)"))
 		return;
@@ -395,7 +483,6 @@ TArray<TObjectPtr<AStaticMeshActor>>& UPortalGun::GetCollisionPlanes(TObjectPtr<
 	{
 		return BluePortalPlanes;
 	}
-
 	return OrangePortalPlanes;
 }
 

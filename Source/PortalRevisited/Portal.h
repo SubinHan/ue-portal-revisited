@@ -11,11 +11,13 @@
 #define PORTAL_COLLISION_PROFILE_NAME "Pawn_Hole"
 #define STANDARD_COLLISION_PROFILE_NAME "Pawn"
 
+class APortalRevisitedCharacter;
 class UStaticMeshComponent;
 class UCapsuleComponent;
 class UArrowComponent;
 class UPortalGun;
 class UWallDissolver;
+class UPortalClipLocation;
 
 DECLARE_LOG_CATEGORY_EXTERN(Portal, Log, All);
 
@@ -24,6 +26,8 @@ class PORTALREVISITED_API APortal : public AStaticMeshActor
 {
 	GENERATED_BODY()
 
+	using LocationAndRotation =
+		std::optional<std::pair<FVector, FQuat>>;
 
 public:
 	
@@ -86,34 +90,18 @@ public:
 
 	void LinkPortals(TObjectPtr<APortal> NewTarget);
 	void RegisterPortalGun(TObjectPtr<UPortalGun> NewPortalGun);
-	void SetPortalTexture(TObjectPtr<UTextureRenderTarget2D> NewTexture);
-
-private:
-	TObjectPtr<UBlueprint> CharacterBlueprint;
-
-	TObjectPtr<APortal> LinkedPortal;
-	uint8 PortalStencilValue;
-
-	bool bIsActivated;
-
-	TArray<TObjectPtr<AActor>> OverlappingActors;
-	TArray<TObjectPtr<AActor>> IgnoredActors;
-	TMap<TObjectPtr<AActor>, TObjectPtr<AActor>> CloneMap;
-	bool bStopRegistering;
-	TObjectPtr<UPortalGun> PortalGun;
-
-protected:
-	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
-
-public:
+	void SetPortalRenderTarget(TObjectPtr<UTextureRenderTarget2D> NewTexture);
+	void SetPortalMaterial(TObjectPtr<UMaterial> NewMaterial);
+	void SetPortalRecurRenderTarget(TObjectPtr<UTextureRenderTarget2D> NewTexture);
+	void SetPortalRecurMaterial(TObjectPtr<UMaterial> NewMaterial);
+	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 	void RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPrimitiveComponent> Component);
 	void Activate();
 	void Deactivate();
 	void SetMeshesVisibility(bool bNewVisibility);
-
+	
 	FVector GetPortalUpVector() const;
 	FVector GetPortalRightVector() const;
 	FVector GetPortalForwardVector() const;
@@ -121,11 +109,9 @@ public:
 	FVector GetPortalRightVector(const FQuat& PortalRotation) const;
 	FVector GetPortalForwardVector(const FQuat& PortalRotation) const;
 	FVector GetPortalPlaneLocation() const;
-	uint8 GetPortalCustomStencilValue() const;
 
 	TObjectPtr<APortal> GetLink() const;
 	
-	void SetPortalCustomStencilValue(uint8 NewValue);
 	void AddIgnoredActor(TObjectPtr<AActor> Actor);
 	void RemoveIgnoredActor(TObjectPtr<AActor> Actor);
 
@@ -189,6 +175,30 @@ public:
 	static std::optional<TObjectPtr<APortal>> CastPortal(AActor* Actor);
 
 private:
+	TObjectPtr<UBlueprint> CharacterBlueprint;
+
+	TObjectPtr<APortal> LinkedPortal;
+	uint8 PortalStencilValue;
+
+	bool bIsActivated;
+
+	TArray<TObjectPtr<AActor>> OverlappingActors;
+	TArray<TObjectPtr<AActor>> IgnoredActors;
+	TMap<TObjectPtr<AActor>, TObjectPtr<AActor>> CloneMap;
+	bool bStopRegistering;
+	TObjectPtr<UPortalGun> PortalGun;
+
+	TObjectPtr<UTextureRenderTarget2D> PortalRecurTexture;
+	TObjectPtr<UMaterial> PortalMaterial;
+	TObjectPtr<UMaterialInterface> PortalRecurMaterial;
+	
+	TObjectPtr<UPortalClipLocation> PortalClipLocation;
+
+protected:
+	// Called when the game starts or when spawned
+	virtual void BeginPlay() override;
+
+private:
 	void InitMeshPortalHole();
 	void InitPortalEnterMask();
 	void InitPortalPlane();
@@ -198,11 +208,13 @@ private:
 	void InitAmbientSoundComponent();
 	
 	void UpdateClones();
-	void UpdateCaptureCamera();
-	void UpdateCapture();
+	LocationAndRotation CalculatePortalCameraLocationAndRotation(
+		const FVector& CameraLocation,
+		const FQuat& CameraQuat);
+	void UpdateCapture(float DeltaTime);
+	void CapturePortalSceneRecur(float DeltaTime, const FVector& CurrentCameraLocation, const FQuat& CurrentCameraRotation, int RecursionRemaining);
 	void CheckAndTeleportOverlappingActors();
 	void PlaySoundAtLocation(USoundBase* SoundToPlay, FVector Location);
 	void TeleportActor(AActor& Actor);
 	void RemoveClone(TObjectPtr<AActor> Actor);
-
 };
