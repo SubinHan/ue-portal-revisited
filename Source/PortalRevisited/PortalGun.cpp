@@ -349,7 +349,8 @@ void UPortalGun::FirePortal(TObjectPtr<APortal> TargetPortal)
 	TargetPortal->SetActorLocation(PortalPoint->first);
 	TargetPortal->SetActorRotation(PortalPoint->second);
 
-	SpawnPlanesAroundPortal(TargetPortal);
+	SpawnPlanesAroundPortal(BluePortal);
+	SpawnPlanesAroundPortal(OrangePortal);
 
 	if (TargetPortal->WallDissolver->GetDissolverName().IsEmpty())
 	{
@@ -382,10 +383,8 @@ void UPortalGun::SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal)
 	}
 
 	const auto PortalForward = TargetPortal->GetActorForwardVector();
-	const auto PortalRight = TargetPortal->GetActorRightVector();
 	const auto PortalUp = TargetPortal->GetActorUpVector();
 	const auto PortalLocation = TargetPortal->GetActorLocation();
-	const auto PortalRotation = TargetPortal->GetActorRotation();
 
 	const auto PortalFront =
 		PortalLocation + PortalForward * 50.0f;
@@ -463,7 +462,7 @@ void UPortalGun::SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal)
 		{
 			return;
 		}
-
+		SpawnedPlane->SetActorHiddenInGame(true);
 		SpawnedPlane->SetActorScale3D(FVector(1.0, 2.0, 1.0));
 		SpawnedPlane->SetMobility(EComponentMobility::Stationary);
 		SpawnedPlane->GetStaticMeshComponent()->SetStaticMesh(PlaneMesh);
