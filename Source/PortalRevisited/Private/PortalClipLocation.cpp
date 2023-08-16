@@ -137,11 +137,6 @@ void UPortalClipLocation::UpdateBackPortalClipLocation(
 		ClipRightUp, 
 		ClipRightDown);
 
-	DebugHelper::PrintVector(ClipLeftUp);
-	DebugHelper::PrintVector(ClipLeftDown);
-	DebugHelper::PrintVector(ClipRightUp);
-	DebugHelper::PrintVector(ClipRightDown);
-
 	const auto LeftUpParameterName =
 		PARAMETER_NAME_BACK + PARAMETER_NAME_LEFTUP;
 	

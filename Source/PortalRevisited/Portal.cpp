@@ -231,6 +231,26 @@ void APortal::InitAmbientSoundComponent()
 	AmbientSoundComponent->AttenuationOverrides = Settings;
 }
 
+// Called when the game starts or when spawned
+void APortal::BeginPlay()
+{
+	Super::BeginPlay();
+}
+
+// Called every frame
+void APortal::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (!bIsActivated)
+		return;
+
+	UpdateClones();
+	LinkedPortal->UpdateClones();
+	UpdateCapture(DeltaTime);
+	CheckAndTeleportOverlappingActors();
+}
+
 void APortal::UpdateClones()
 {
 	for (auto [Original, Clone] : CloneMap)
@@ -333,36 +353,6 @@ std::optional<TObjectPtr<AActor>> APortal::GetOriginalIfClone(AActor* Actor)
 	return std::nullopt;
 }
 
-FVector APortal::GetPortalUpVector() const
-{
-	return GetPortalUpVector(GetActorQuat());
-}
-
-FVector APortal::GetPortalRightVector() const
-{
-	return GetPortalRightVector(GetActorQuat());
-}
-
-FVector APortal::GetPortalForwardVector() const
-{
-	return GetPortalForwardVector(GetActorQuat());
-}
-
-FVector APortal::GetPortalUpVector(const FQuat& PortalRotation) const
-{
-	return PortalRotation.GetUpVector();
-}
-
-FVector APortal::GetPortalRightVector(const FQuat& PortalRotation) const
-{
-	return PortalRotation.GetRightVector();
-}
-
-FVector APortal::GetPortalForwardVector(const FQuat& PortalRotation) const
-{
-	return PortalRotation.GetForwardVector();
-}
-
 void APortal::UpdateCapture(float DeltaTime)
 {
 	if (!PortalCamera->TextureTarget)
@@ -431,8 +421,8 @@ void APortal::CapturePortalSceneRecur(
 	const auto [CameraLocation, CameraRotation] =
 		*CameraLocationAndRotationOpt;
 
-	// If the camera is front of the portal so the captured screen
-	// will be never shown, then return.
+	// If the portal camera is front of the portal so the
+	// captured screen will be never shown, then return.
 	const auto LinkedPortalForward = 
 		LinkedPortal->GetPortalForwardVector();
 
@@ -449,7 +439,7 @@ void APortal::CapturePortalSceneRecur(
 	const auto CameraForward =
 		UKismetMathLibrary::GetForwardVector(CameraRotation.Rotator());
 
-	if (CameraForward.Dot(LinkedPortalForward) < 0.0)
+	if (CameraForward.Dot(LinkedPortalForward) < -0.666)
 	{
 		return;
 	}
@@ -477,13 +467,31 @@ void APortal::CapturePortalSceneRecur(
 	PortalCamera->ClipPlaneNormal = LinkedPortal->GetActorForwardVector();
 	PortalCamera->CaptureScene();
 
+	if (RecursionRemaining == 1)
+	{
+		PortalPlane->SetMaterial(0, OriginalMaterial);
+	}
+
 	if (RecursionRemaining > 2)
 		return;
+	
 	// In this case, we will save location of the farthest,
 	// and second farthest portal in the clip space. We can
 	// determine where the portal rectangle is in the render
 	// target, and draw it recursively on the portal so
 	// it generates an effect that the portal stands infinitely.
+
+	// If portals are not facing, no need to consider recursion.
+	const auto ThisForward = GetPortalForwardVector();
+	const auto LinkForward = LinkedPortal->GetPortalForwardVector();
+
+	const bool bArePortalsFacing =
+		ThisForward.Dot(LinkForward) < -0.2;
+
+	if (!bArePortalsFacing)
+	{
+		return;
+	}
 
 	// Set camera projection matrix of the portal camera.
 	FMatrix UnusedViewMatrix;
@@ -504,7 +512,6 @@ void APortal::CapturePortalSceneRecur(
 		PortalClipLocation->UpdateBackPortalClipLocation(
 			ViewProjectionMatrix,
 			this);
-		PortalPlane->SetMaterial(0, OriginalMaterial);
 
 		ENQUEUE_RENDER_COMMAND(PortalTextureCopy)(
 			[this](FRHICommandListImmediate& RHICmdList)
@@ -733,25 +740,6 @@ void APortal::SetPortalRecurMaterial(TObjectPtr<UMaterial> NewMaterial)
 	PortalRecurMaterial = NewMaterial;
 }
 
-// Called when the game starts or when spawned
-void APortal::BeginPlay()
-{
-	Super::BeginPlay();
-}
-
-// Called every frame
-void APortal::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-
-	if (!bIsActivated)
-		return;
-
-	UpdateClones();
-	UpdateCapture(DeltaTime);
-	CheckAndTeleportOverlappingActors();
-}
-
 void APortal::RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPrimitiveComponent> Component)
 {
 	// Prevent to stack overflow by spawning clone actor.
@@ -930,6 +918,37 @@ void APortal::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherAct
 	
 	UnregisterOverlappingActor(OtherActor, OtherComp);
 }
+
+FVector APortal::GetPortalUpVector() const
+{
+	return GetPortalUpVector(GetActorQuat());
+}
+
+FVector APortal::GetPortalRightVector() const
+{
+	return GetPortalRightVector(GetActorQuat());
+}
+
+FVector APortal::GetPortalForwardVector() const
+{
+	return GetPortalForwardVector(GetActorQuat());
+}
+
+FVector APortal::GetPortalUpVector(const FQuat& PortalRotation) const
+{
+	return PortalRotation.GetUpVector();
+}
+
+FVector APortal::GetPortalRightVector(const FQuat& PortalRotation) const
+{
+	return PortalRotation.GetRightVector();
+}
+
+FVector APortal::GetPortalForwardVector(const FQuat& PortalRotation) const
+{
+	return PortalRotation.GetForwardVector();
+}
+
 
 FVector APortal::TransformVectorToDestSpace(
 	const FVector& Target)
