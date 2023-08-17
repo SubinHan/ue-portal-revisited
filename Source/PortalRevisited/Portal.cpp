@@ -33,6 +33,7 @@ template<class T>
 using Asset = ConstructorHelpers::FObjectFinder<T>;
 
 constexpr uint8 DEFAULT_STENCIL_VALUE = 1;
+constexpr int PORTAL_MAX_RECURSION = 2;
 
 // Sets default values
 APortal::APortal()
@@ -390,13 +391,12 @@ void APortal::UpdateCapture(float DeltaTime)
 		PlayerCameraManager->GetCameraLocation();
 	auto PlayerCameraRotation = 
 		PlayerCameraManager->GetCameraRotation().Quaternion();
-
-	constexpr auto MAX_RECURSION = 2;
+	
 	CapturePortalSceneRecur(
 		DeltaTime,
 		PlayerCameraLocation,
 		PlayerCameraRotation, 
-		MAX_RECURSION);
+		PORTAL_MAX_RECURSION);
 }
 
 void APortal::CapturePortalSceneRecur(
@@ -455,33 +455,21 @@ void APortal::CapturePortalSceneRecur(
 	// capturing scene.
 	UMaterialInterface* OriginalMaterial = nullptr;
 
-	PortalCamera->ClearHiddenComponents();
-	PortalCamera->HideComponent(Character->GetMesh1P());
-
 	if (RecursionRemaining == 1)
 	{
 		OriginalMaterial = PortalPlane->GetMaterial(0);
 		PortalPlane->SetMaterial(0, PortalRecurMaterial);
-
-		for (auto [Original, Clone] : CloneMap)
-		{
-			if (!Clone)
-				continue;
-			
-			if (const auto OriginalPlayer =
-				Cast<APortalRevisitedCharacter>(Original))
-			{
-				auto ClonePlayer =
-					Cast<APortalRevisitedCharacter>(Clone);
-
-				DebugHelper::PrintText("1");
-				PortalCamera->HiddenComponents.Add(ClonePlayer->GetMesh1P());
-			}
-		}
 	}
-	else
-	{
 
+	// We should hide original character's first person mesh
+	// when capturing portal screen.
+	PortalCamera->ClearHiddenComponents();
+	PortalCamera->HideComponent(Character->GetMesh1P());
+
+	// In first capture, we should hide third person mesh of
+	// cloned player.
+	if (RecursionRemaining == PORTAL_MAX_RECURSION)
+	{
 		for (auto [Original, Clone] : CloneMap)
 		{
 			if (!Clone)
@@ -497,7 +485,27 @@ void APortal::CapturePortalSceneRecur(
 			}
 		}
 	}
+	else
+	{
+		// Not in the first capture, we should hide first person mesh
+		// of the clone player.
+		for (auto [Original, Clone] : CloneMap)
+		{
+			if (!Clone)
+				continue;
+			
+			if (const auto OriginalPlayer =
+				Cast<APortalRevisitedCharacter>(Original))
+			{
+				auto ClonePlayer =
+					Cast<APortalRevisitedCharacter>(Clone);
+				
+				PortalCamera->HiddenComponents.Add(ClonePlayer->GetMesh1P());
+			}
+		}
+	}
 
+	// Set portal camera transform and capture.
 	PortalCamera->SetWorldLocationAndRotation(
 		CameraLocation,
 		CameraRotation);
@@ -506,6 +514,7 @@ void APortal::CapturePortalSceneRecur(
 	
 	PortalCamera->CaptureScene();
 
+	// If the last recursion, we should set back the material.
 	if (RecursionRemaining == 1)
 	{
 		PortalPlane->SetMaterial(0, OriginalMaterial);
@@ -513,7 +522,6 @@ void APortal::CapturePortalSceneRecur(
 
 	if (RecursionRemaining > 2)
 		return;
-	
 	// In this case, we will save location of the farthest,
 	// and second farthest portal in the clip space. We can
 	// determine where the portal rectangle is in the render
@@ -830,6 +838,8 @@ void APortal::RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPri
 	{
 		ClonePlayer->GetMesh()->SetLeaderPoseComponent(OriginalPlayer->GetMesh());
 		ClonePlayer->GetMesh1P()->SetLeaderPoseComponent(OriginalPlayer->GetMesh1P());
+
+		OriginalPlayer->GetFirstPersonCameraComponent()->
 
 		TArray<AActor*> AttachedActors;
 		OriginalPlayer->GetAttachedActors(AttachedActors);
