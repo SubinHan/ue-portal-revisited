@@ -94,6 +94,7 @@ public:
 	void SetPortalMaterial(TObjectPtr<UMaterial> NewMaterial);
 	void SetPortalRecurRenderTarget(TObjectPtr<UTextureRenderTarget2D> NewTexture);
 	void SetPortalRecurMaterial(TObjectPtr<UMaterial> NewMaterial);
+	void SetCharacter(TObjectPtr<APortalRevisitedCharacter> NewCharacter);
 	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
@@ -176,6 +177,7 @@ public:
 
 private:
 	TObjectPtr<UBlueprint> CharacterBlueprint;
+	TObjectPtr<APortalRevisitedCharacter> Character;
 
 	TObjectPtr<APortal> LinkedPortal;
 	uint8 PortalStencilValue;

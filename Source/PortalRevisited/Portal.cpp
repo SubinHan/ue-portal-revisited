@@ -454,10 +454,48 @@ void APortal::CapturePortalSceneRecur(
 	// portal. It will be changed to original material after
 	// capturing scene.
 	UMaterialInterface* OriginalMaterial = nullptr;
+
+	PortalCamera->ClearHiddenComponents();
+	PortalCamera->HideComponent(Character->GetMesh1P());
+
 	if (RecursionRemaining == 1)
 	{
 		OriginalMaterial = PortalPlane->GetMaterial(0);
 		PortalPlane->SetMaterial(0, PortalRecurMaterial);
+
+		for (auto [Original, Clone] : CloneMap)
+		{
+			if (!Clone)
+				continue;
+			
+			if (const auto OriginalPlayer =
+				Cast<APortalRevisitedCharacter>(Original))
+			{
+				auto ClonePlayer =
+					Cast<APortalRevisitedCharacter>(Clone);
+
+				DebugHelper::PrintText("1");
+				PortalCamera->HiddenComponents.Add(ClonePlayer->GetMesh1P());
+			}
+		}
+	}
+	else
+	{
+
+		for (auto [Original, Clone] : CloneMap)
+		{
+			if (!Clone)
+				continue;
+			
+			if (const auto OriginalPlayer =
+				Cast<APortalRevisitedCharacter>(Original))
+			{
+				auto ClonePlayer =
+					Cast<APortalRevisitedCharacter>(Clone);
+
+				PortalCamera->HiddenComponents.Add(ClonePlayer->GetMesh());
+			}
+		}
 	}
 
 	PortalCamera->SetWorldLocationAndRotation(
@@ -465,6 +503,7 @@ void APortal::CapturePortalSceneRecur(
 		CameraRotation);
 	PortalCamera->ClipPlaneBase = LinkedPortal->GetPortalPlaneLocation();
 	PortalCamera->ClipPlaneNormal = LinkedPortal->GetActorForwardVector();
+	
 	PortalCamera->CaptureScene();
 
 	if (RecursionRemaining == 1)
@@ -739,6 +778,11 @@ void APortal::SetPortalRecurMaterial(TObjectPtr<UMaterial> NewMaterial)
 	PortalRecurMaterial = NewMaterial;
 }
 
+void APortal::SetCharacter(TObjectPtr<APortalRevisitedCharacter> NewCharacter)
+{
+	Character = NewCharacter;
+}
+
 void APortal::RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPrimitiveComponent> Component)
 {
 	// Prevent to stack overflow by spawning clone actor.
@@ -784,6 +828,7 @@ void APortal::RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPri
 	
 	if (OriginalPlayer && ClonePlayer)
 	{
+		ClonePlayer->GetMesh()->SetLeaderPoseComponent(OriginalPlayer->GetMesh());
 		ClonePlayer->GetMesh1P()->SetLeaderPoseComponent(OriginalPlayer->GetMesh1P());
 
 		TArray<AActor*> AttachedActors;

@@ -160,6 +160,9 @@ UPortalGun::UPortalGun()
 
 void UPortalGun::LinkPortals()
 {
+	BluePortal->SetCharacter(Character);
+	OrangePortal->SetCharacter(Character);
+
 	BluePortal->LinkPortals(OrangePortal);
 	OrangePortal->LinkPortals(BluePortal);
 
