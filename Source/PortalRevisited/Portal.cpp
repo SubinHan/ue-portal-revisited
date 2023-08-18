@@ -839,8 +839,6 @@ void APortal::RegisterOverlappingActor(TObjectPtr<AActor> Actor, TObjectPtr<UPri
 		ClonePlayer->GetMesh()->SetLeaderPoseComponent(OriginalPlayer->GetMesh());
 		ClonePlayer->GetMesh1P()->SetLeaderPoseComponent(OriginalPlayer->GetMesh1P());
 
-		OriginalPlayer->GetFirstPersonCameraComponent()->
-
 		TArray<AActor*> AttachedActors;
 		OriginalPlayer->GetAttachedActors(AttachedActors);
 

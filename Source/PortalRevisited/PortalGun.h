@@ -125,12 +125,11 @@ private:
 		const APortal& TargetPortal) const;
 
 	PortalOffset MovePortalUAxisAligned(
-		const FVector& BoundCenter, 
-		const FVector& BoundExtent, 
-		const FVector& PortalForward, 
+		const FVector& BoundCenter,
+		const FVector& BoundExtent,
 		const FVector& PortalRight,
 		const FVector& PortalUp,
-		const FVector& PortalPoint,
+		const FVector& PortalCenter,
 		const FVector& U) const;
 
 	FVector CalculateOffset(

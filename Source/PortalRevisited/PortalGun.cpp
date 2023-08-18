@@ -366,10 +366,8 @@ void UPortalGun::FirePortal(TObjectPtr<APortal> TargetPortal)
 
 bool UPortalGun:: CanPlacePortal(UPhysicalMaterial* WallPhysicalMaterial)
 {
-
 	return WallPhysicalMaterial->SurfaceType == WHITE_SURFACE;
 }
-
 
 void UPortalGun::SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal)
 {
@@ -528,7 +526,6 @@ UPortalGun::PortalCenterAndNormal UPortalGun::CalculateCorrectPortalCenter(
 		const auto PortalOffsetX = MovePortalUAxisAligned(
 			Center,
 			Extent,
-			PortalForward,
 			PortalRight,
 			PortalUp,
 			ResultPoint,
@@ -548,7 +545,6 @@ UPortalGun::PortalCenterAndNormal UPortalGun::CalculateCorrectPortalCenter(
 		const auto PortalOffsetY = MovePortalUAxisAligned(
 			Center,
 			Extent,
-			PortalForward,
 			PortalRight,
 			PortalUp,
 			ResultPoint,
@@ -568,7 +564,6 @@ UPortalGun::PortalCenterAndNormal UPortalGun::CalculateCorrectPortalCenter(
 		const auto PortalOffsetZ = MovePortalUAxisAligned(
 			Center,
 			Extent,
-			PortalForward,
 			PortalRight,
 			PortalUp,
 			ResultPoint,
@@ -643,18 +638,14 @@ FQuat UPortalGun::CalculatePortalRotation(const FVector& ImpactNormal, const APo
 	return Result;
 }
 
-
 UPortalGun::PortalOffset UPortalGun::MovePortalUAxisAligned(
 	const FVector& BoundCenter,
 	const FVector& BoundExtent,
-	const FVector& PortalForward,
 	const FVector& PortalRight,
 	const FVector& PortalUp,
-	const FVector& PortalPoint,
+	const FVector& PortalCenter,
 	const FVector& U) const
 {
-	FVector ResultOffset(0.0, 0.0, 0.0);
-
 	const auto BoundCenterU = BoundCenter.Dot(U);
 	const auto BoundExtentU = BoundExtent.Dot(U);
 
@@ -684,81 +675,20 @@ UPortalGun::PortalOffset UPortalGun::MovePortalUAxisAligned(
 		return std::nullopt;
 	}
 
-	const auto UComponent = PortalPoint.Dot(U);
-	double Delta = 0.0f;
+	const auto CenterDotU = PortalCenter.Dot(U);
+	double Delta = 0.0;
 
 	// Should move portal to +U?
-	if (UComponent < PortalUMin)
+	if (CenterDotU < PortalUMin)
 	{
-		Delta = PortalUMin - UComponent;
-
-		// Now we will move U without modifying V components.
-		ResultOffset += CalculateOffset(
-			PortalForward,
-			PortalRight,
-			PortalUp,
-			U,
-			Delta);
+		Delta = PortalUMin - CenterDotU;
 	}
-	if (UComponent > PortalUMax)
+	else if (CenterDotU > PortalUMax)
 	{
-		Delta = PortalUMax - UComponent;
-
-		// Now we will move U without modifying V components.
-		ResultOffset += CalculateOffset(
-			PortalForward,
-			PortalRight,
-			PortalUp,
-			U,
-			Delta);
+		Delta = PortalUMax - CenterDotU;
 	}
 
-	return ResultOffset;
-}
-
-FVector UPortalGun::CalculateOffset(
-	const FVector& PortalForward,
-	const FVector PortalRight,
-	const FVector PortalUp,
-	const FVector U,
-	const double Delta) const
-{
-	FVector ResultPoint(0.0, 0.0, 0.0);
-
-	const auto UpDotU = PortalUp.Dot(U);
-	const auto RightDotU = PortalRight.Dot(U);
-
-	if (FMath::IsNearlyZero(UpDotU))
-	{
-		return (Delta / RightDotU) * PortalRight;
-	}
-
-	if (FMath::IsNearlyZero(RightDotU))
-	{
-		return (Delta / UpDotU) * PortalUp;
-	}
-
-	const auto V = U.Cross(PortalForward);
-	// Should we move portal to up direction?
-	// If the denominator is 0, then we should
-	// move to right only.
-	const auto UpDotV = PortalUp.Dot(V);
-	const auto RightDotV = PortalRight.Dot(V);
-
-	const auto Denominator =
-		UpDotU * RightDotV -
-		RightDotU * UpDotV;
-
-	const auto DeltaUp =
-		Delta * RightDotV /
-		Denominator;
-
-	const auto DeltaRight =
-		-DeltaUp *
-		UpDotV /
-		RightDotV;
-
-	return DeltaUp * PortalUp + DeltaRight * PortalRight;
+	return Delta * U;
 }
 
 void UPortalGun::Interact()
