@@ -440,10 +440,10 @@ void UPortalGun::SpawnPlanesAroundPortal(TObjectPtr<APortal> TargetPortal)
 
 		const auto SpawnLocation = HitResult.ImpactPoint;
 		const auto PlaneNormal = HitResult.ImpactNormal;
-		const auto PlaneU =
-			(PortalForward - PlaneNormal.Dot(PortalForward))
-			.GetSafeNormal();
-		const auto PlaneV = PlaneNormal.Cross(PlaneU).GetSafeNormal();
+		const auto PlaneV =
+			PortalForward.Cross(PlaneNormal);
+		const auto PlaneU = 
+			PlaneNormal.Cross(PlaneV).GetSafeNormal();
 		const auto SpawnRotation =
 			UKismetMathLibrary::MakeRotationFromAxes(
 				PlaneU,
@@ -513,7 +513,6 @@ UPortalGun::PortalCenterAndNormal UPortalGun::CalculateCorrectPortalCenter(
 
 	const auto PortalUp = TargetPortal.GetPortalUpVector(PortalRotation);
 	const auto PortalRight = TargetPortal.GetPortalRightVector(PortalRotation);
-	const auto PortalForward = TargetPortal.GetPortalForwardVector(PortalRotation);
 
 	const auto OtherActorBounds =
 		HitResult.GetActor()->GetComponentsBoundingBox();

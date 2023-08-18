@@ -481,7 +481,7 @@ void APortal::CapturePortalSceneRecur(
 				auto ClonePlayer =
 					Cast<APortalRevisitedCharacter>(Clone);
 
-				PortalCamera->HiddenComponents.Add(ClonePlayer->GetMesh());
+				PortalCamera->HideComponent(ClonePlayer->GetMesh());
 			}
 		}
 	}
@@ -500,11 +500,11 @@ void APortal::CapturePortalSceneRecur(
 				auto ClonePlayer =
 					Cast<APortalRevisitedCharacter>(Clone);
 				
-				PortalCamera->HiddenComponents.Add(ClonePlayer->GetMesh1P());
+				PortalCamera->HideComponent(ClonePlayer->GetMesh1P());
 			}
 		}
 	}
-
+	
 	// Set portal camera transform and capture.
 	PortalCamera->SetWorldLocationAndRotation(
 		CameraLocation,
