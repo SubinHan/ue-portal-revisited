@@ -9,6 +9,8 @@
 class USphereComponent;
 class UProjectileMovementComponent;
 
+DECLARE_LOG_CATEGORY_EXTERN(PortalProjectile, Log, All);
+
 UCLASS(config=Game)
 class APortalRevisitedProjectile : public AActor
 {
@@ -28,10 +30,19 @@ public:
 	/** called when projectile hits something */
 	UFUNCTION()
 	void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+	
+	virtual void Tick(float DeltaSeconds) override;
 
 	/** Returns CollisionComp subobject **/
 	USphereComponent* GetCollisionComp() const { return CollisionComp; }
 	/** Returns ProjectileMovement subobject **/
 	UProjectileMovementComponent* GetProjectileMovement() const { return ProjectileMovement; }
+
+	void SetPrjectileDestination(const FVector NewDestination);
+
+private:
+	bool bCanCreatePortal;
+	FVector Destination;
+
 };
 

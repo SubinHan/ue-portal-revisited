@@ -213,3 +213,57 @@ void UPortalClipLocation::UpdateFrontPortalClipLocation(
 		FName(RightDownParameterName),
 		ClipRightDown);
 }
+
+
+bool UPortalClipLocation::CannotSeePortal(
+	const FMatrix& ViewProjectionMatrix, 
+	APortal* PortalToDraw)
+{
+	UE::Math::TVector4<double> ClipLeftUp;
+	UE::Math::TVector4<double> ClipLeftDown;
+	UE::Math::TVector4<double> ClipRightUp;
+	UE::Math::TVector4<double> ClipRightDown;
+	CalculateClipSpaceLocation(
+		ViewProjectionMatrix,
+		PortalToDraw, 
+		ClipLeftUp, 
+		ClipLeftDown,
+		ClipRightUp, 
+		ClipRightDown);
+
+	const bool IsAllUpSide =
+		ClipLeftUp.Y <= 0.0		&& ClipLeftUp.Z > 0.0 &&
+		ClipLeftDown.Y <= 0.0	&& ClipLeftDown.Z > 0.0 &&
+		ClipRightUp.Y <= 0.0	&& ClipRightUp.Z > 0.0 &&
+		ClipRightDown.Y <= 0.0	&& ClipRightDown.Z > 0.0;
+	
+	const bool IsAllDownSide =
+		ClipLeftUp.Y >= 1.0		&& ClipLeftUp.Z > 0.0 &&
+		ClipLeftDown.Y >= 1.0	&& ClipLeftDown.Z > 0.0 &&
+		ClipRightUp.Y >= 1.0	&& ClipRightUp.Z > 0.0 &&
+		ClipRightDown.Y >= 1.0	&& ClipRightDown.Z > 0.0;
+	
+	const bool IsAllLeftSide =
+		ClipLeftUp.X <= 0.0		&& ClipLeftUp.Z > 0.0 &&
+		ClipLeftDown.X <= 0.0	&& ClipLeftDown.Z > 0.0 &&
+		ClipRightUp.X <= 0.0	&& ClipRightUp.Z > 0.0 &&
+		ClipRightDown.X <= 0.0	&& ClipRightDown.Z > 0.0;
+
+	const bool IsAllRightSide =
+		ClipLeftUp.X >= 1.0		&& ClipLeftUp.Z > 0.0 &&
+		ClipLeftDown.X >= 1.0	&& ClipLeftDown.Z > 0.0 &&
+		ClipRightUp.X >= 1.0	&& ClipRightUp.Z > 0.0 &&
+		ClipRightDown.X >= 1.0	&& ClipRightDown.Z > 0.0;
+
+	const bool IsAllBackSide =
+		ClipLeftUp.Z < -0.01 &&
+		ClipLeftDown.Z < -0.01 &&
+		ClipRightUp.Z < -0.01 &&
+		ClipRightDown.Z < -0.01;
+
+	return IsAllUpSide ||
+		IsAllDownSide ||
+		IsAllLeftSide ||
+		IsAllRightSide ||
+		IsAllBackSide;
+}

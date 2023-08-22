@@ -11,6 +11,7 @@
 
 #include "Portal.h"
 #include "PortalRevisitedCharacter.h"
+#include "PortalRevisitedProjectile.h"
 #include "PortalUtil.h"
 #include "GameFramework/PlayerController.h"
 #include "EnhancedInputComponent.h"
@@ -27,7 +28,7 @@
 #include "PhysicalMaterials/PhysicalMaterial.h"
 #include "PhysicsEngine/PhysicsHandleComponent.h"
 
-constexpr float PORTAL_GUN_RANGE = 3000.f;
+constexpr float PORTAL_GUN_RANGE = 5000.f;
 constexpr float PORTAL_GUN_GRAB_RANGE = 400.f;
 constexpr float PORTAL_GUN_GRAB_OFFSET = 200.f;
 constexpr float PORTAL_GUN_GRAB_FORCE_MULTIPLIER = 5.f;
@@ -105,22 +106,25 @@ UPortalGun::UPortalGun()
 	}
 	
 	using MaterialAsset =
-		ConstructorHelpers::FObjectFinder<UMaterial>;
+		ConstructorHelpers::FObjectFinder<UMaterialInstance>;
 
 	MaterialAsset BluePortalMaterialAsset(
-		TEXT("/Script/Engine.Material'/Game/M_BluePortal.M_BluePortal'"));
+		TEXT("/Script/Engine.MaterialInstanceConstant'/Game/MI_BluePortal.MI_BluePortal'"));
 	MaterialAsset OrangePortalMaterialAsset(
-		TEXT("/Script/Engine.Material'/Game/M_OrangePortal.M_OrangePortal'"));
-	
+		TEXT("/Script/Engine.MaterialInstanceConstant'/Game/MI_OrangePortal.MI_OrangePortal'"));
+	MaterialAsset BluePortalInnerMaterialAsset(
+		TEXT("/Script/Engine.MaterialInstanceConstant'/Game/MI_BluePortalInner.MI_BluePortalInner'"));
+	MaterialAsset OrangePortalInnerMaterialAsset(
+		TEXT("/Script/Engine.MaterialInstanceConstant'/Game/MI_OrangePortalInner.MI_OrangePortalInner'"));
+
 	if (BluePortalMaterialAsset.Object)
 	{
 		BluePortalMaterial = BluePortalMaterialAsset.Object;
 	}
 	else
 	{
-		UE_LOG(Portal, Warning, TEXT("Cannot find blue portal material named by M_BluePortal"));
+		UE_LOG(Portal, Warning, TEXT("Cannot find blue portal material named by MI_BluePortal"));
 	}
-
 	
 	if (OrangePortalMaterialAsset.Object)
 	{
@@ -128,13 +132,32 @@ UPortalGun::UPortalGun()
 	}
 	else
 	{
-		UE_LOG(Portal, Warning, TEXT("Cannot find blue portal material named by M_OrangePortal"));
+		UE_LOG(Portal, Warning, TEXT("Cannot find blue portal material named by MI_OrangePortal"));
+	}
+	
+	if (BluePortalInnerMaterialAsset.Object)
+	{
+		BluePortalInnerMaterial = BluePortalInnerMaterialAsset.Object;
+	}
+	else
+	{
+		UE_LOG(Portal, Warning, TEXT("Cannot find blue portal inner material named by MI_BluePortalInner"));
 	}
 
+	if (OrangePortalInnerMaterialAsset.Object)
+	{
+		OrangePortalInnerMaterial = OrangePortalInnerMaterialAsset.Object;
+	}
+	else
+	{
+		UE_LOG(Portal, Warning, TEXT("Cannot find blue portal material named by MI_OrangePortalInner"));
+	}
+
+
 	MaterialAsset BluePortalRecurMaterialAsset(
-		TEXT("/Script/Engine.Material'/Game/M_BluePortalRecur.M_BluePortalRecur'"));
+		TEXT("/Script/Engine.MaterialInstanceConstant'/Game/MI_BluePortalRecur.MI_BluePortalRecur'"));
 	MaterialAsset OrangePortalRecurMaterialAsset(
-		TEXT("/Script/Engine.Material'/Game/M_OrangePortalRecur.M_OrangePortalRecur'"));
+		TEXT("/Script/Engine.MaterialInstanceConstant'/Game/MI_OrangePortalRecur.MI_OrangePortalRecur'"));
 	
 	if (BluePortalRecurMaterialAsset.Object)
 	{
@@ -142,7 +165,7 @@ UPortalGun::UPortalGun()
 	}
 	else
 	{
-		UE_LOG(Portal, Warning, TEXT("Cannot find blue portal material named by M_BluePortalRecur"));
+		UE_LOG(Portal, Warning, TEXT("Cannot find blue portal material named by MI_BluePortalRecur"));
 	}
 	
 	if (OrangePortalRecurMaterialAsset.Object)
@@ -151,7 +174,7 @@ UPortalGun::UPortalGun()
 	}
 	else
 	{
-		UE_LOG(Portal, Warning, TEXT("Cannot find orange portal material named by M_OrangePortalRecur"));		
+		UE_LOG(Portal, Warning, TEXT("Cannot find orange portal material named by MI_OrangePortalRecur"));		
 	}
 
 	PrimaryComponentTick.bCanEverTick = true;
@@ -172,9 +195,12 @@ void UPortalGun::LinkPortals()
 	BluePortal->SetPortalRenderTarget(BluePortalRenderTarget);
 	OrangePortal->SetPortalRenderTarget(OrangePortalRenderTarget);
 	
-	BluePortal->SetPortalMaterial(BluePortalMaterial);
-	OrangePortal->SetPortalMaterial(OrangePortalMaterial);
+	BluePortal->SetPortalPlaneMaterial(0, BluePortalMaterial);
+	OrangePortal->SetPortalPlaneMaterial(0, OrangePortalMaterial);
 
+	BluePortal->SetPortalInnerMaterial(0, BluePortalInnerMaterial);
+	OrangePortal->SetPortalInnerMaterial(0, OrangePortalInnerMaterial);
+	
 	BluePortal->SetPortalRecurRenderTarget(BluePortalRecurRenderTarget);
 	OrangePortal->SetPortalRecurRenderTarget(OrangePortalRecurRenderTarget);
 
@@ -330,15 +356,18 @@ void UPortalGun::FirePortal(TObjectPtr<APortal> TargetPortal)
 	if (HitResult.GetActor()->GetUniqueID() == TargetPortal->GetLink()->GetUniqueID())
 	{
 		UE_LOG(Portal, Log, TEXT("Fired portal but hit linked portal."))
+		FirePortalProjectile(HitResult.ImpactPoint, false);
 		return;
 	}
 
 	if (!CanPlacePortal(HitResult.PhysMaterial.Get()))
 	{
 		UE_LOG(Portal, Log, TEXT("Hit non-white wall."))
+		FirePortalProjectile(HitResult.ImpactPoint, false);
 		return;
 	}
 
+	FirePortalProjectile(HitResult.ImpactPoint, true);
 	PortalCenterAndNormal PortalPoint
 		= CalculateCorrectPortalCenter(HitResult, *TargetPortal);
 
@@ -362,6 +391,38 @@ void UPortalGun::FirePortal(TObjectPtr<APortal> TargetPortal)
 	TargetPortal->WallDissolver->UpdateParameters(TargetPortal->GetActorLocation());
 
 	TargetPortal->Activate();
+}
+
+void UPortalGun::FirePortalProjectile(const FVector& ImpactPoint, bool CanCreatePortal)
+{
+	if (!ProjectileClass)
+	{
+		UE_LOG(Portal, Warning, TEXT("FirePortalProjectile: Projectile class doesn't set. The projectile will be not spawn."));
+		return;
+	}
+
+	const auto World = GetWorld();
+	if(!World)
+	{
+		UE_LOG(Portal, Error, TEXT("FirePortalProjectile: Cannot get the world."));
+		return;
+	}
+
+	UE_LOG(Portal, Log, TEXT("FirePortalProjectile: Spawn a projectile."))
+		
+	auto* PlayerController = Cast<APlayerController>(Character->GetController());
+	const auto SpawnRotation = PlayerController->PlayerCameraManager->GetCameraRotation();
+	// MuzzleOffset is in camera space, so transform it to world space before offsetting from the character location to find the final muzzle position
+	const auto SpawnLocation = Character->GetActorLocation() + SpawnRotation.RotateVector(MuzzleOffset);
+
+	//Set Spawn Collision Handling Override
+	FActorSpawnParameters ActorSpawnParams;
+	ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// Spawn the projectile at the muzzle
+	auto Spawned = World->SpawnActor<APortalRevisitedProjectile>(ProjectileClass, SpawnLocation, SpawnRotation, ActorSpawnParams);
+	Spawned->SetPrjectileDestination(ImpactPoint);
+	
 }
 
 bool UPortalGun:: CanPlacePortal(UPhysicalMaterial* WallPhysicalMaterial)
@@ -708,8 +769,6 @@ void UPortalGun::Interact()
 	const auto Direction = Camera->GetForwardVector();
 	const auto End = Start + Direction * PORTAL_GUN_GRAB_RANGE;
 
-	DebugHelper::DrawLine(Start, Direction, FColor::Green);
-
 	FCollisionQueryParams CollisionParams;
 	CollisionParams.AddIgnoredActor(Character);
 	CollisionParams.AddIgnoredComponent(BluePortal->PortalEnterMask);
@@ -735,8 +794,6 @@ void UPortalGun::Interact()
 	auto HitResult = HitResults[0];
 	bIsGrabbedObjectAcrossedPortal = false;
 
-	DebugHelper::PrintText(*HitResult.GetComponent()->GetName());
-
 	if (auto PortalOpt = APortal::CastPortal(HitResult.GetActor()))
 	{
 		UE_LOG(Portal, Log, TEXT("Hit Portal, try grab beyond the opposite space"));
@@ -752,9 +809,6 @@ void UPortalGun::Interact()
 		const auto OppositePortalForward =
 			PortalActor->GetLink()->GetPortalForwardVector();
 
-		DebugHelper::PrintVector(PortalActor->GetPortalForwardVector());
-		DebugHelper::PrintVector(OppositePortalForward);
-
 		// We should move start point little because
 		// prevent to hit the wall mesh.
 		constexpr auto ForwardOffset = 10.f;
@@ -763,17 +817,13 @@ void UPortalGun::Interact()
 
 		const auto StartOffset =
 			ForwardOffset / DirectionDotForward;
-
-		DebugHelper::PrintText(FString::SanitizeFloat(StartOffset));
-
+		
 		const auto OppositeStart =
 			PortalActor->TransformPointToDestSpace(ImpactPoint) +
 			OppositeDirection * StartOffset;
 		const auto OppositeEnd =
 			OppositeStart + OppositeDirection * RemainRange;
-
-		DebugHelper::DrawLine(OppositeStart, OppositeDirection);
-
+		
 		CollisionParams.AddIgnoredActor(BluePortal);
 		CollisionParams.AddIgnoredActor(OrangePortal);
 

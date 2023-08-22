@@ -136,14 +136,6 @@ void APortal::InitPortalPlane()
 	{
 		PortalPlane->SetStaticMesh(PortalPlaneMesh.Object);
 	}
-
-	Asset<UMaterial> PortalPlaneMaterial(
-		TEXT("Material'/Game/M_Portal.M_Portal'"));
-
-	if (PortalPlaneMaterial.Object)
-	{
-		PortalPlane->SetMaterial(0, PortalPlaneMaterial.Object);
-	}
 }
 
 void APortal::InitPortalInner()
@@ -167,13 +159,6 @@ void APortal::InitPortalInner()
 	{
 		PortalInner->SetStaticMesh(PortalInnerMesh.Object);
 	}
-
-	Asset<UMaterial> PortalInnerMaterial(
-		TEXT("Material'/Game/M_Portal.M_Portal'"));
-	if (PortalInnerMaterial.Object)
-	{
-		PortalInner->SetMaterial(0, PortalInnerMaterial.Object);
-	}
 }
 
 void APortal::InitPortalCamera()
@@ -187,11 +172,11 @@ void APortal::InitPortalCamera()
 	PortalCamera->ShowFlags.SetEyeAdaptation(false);
 	PortalCamera->ShowFlags.SetMotionBlur(false);
 	PortalCamera->ShowFlags.SetBloom(false);
-	PortalCamera->ShowFlags.SetToneCurve(false);
+	PortalCamera->ShowFlags.SetToneCurve(false);/*
 	PortalCamera->PostProcessSettings.
 		bOverride_DynamicGlobalIlluminationMethod = true;
 	PortalCamera->PostProcessSettings.DynamicGlobalIlluminationMethod =
-		EDynamicGlobalIlluminationMethod::Lumen;
+		EDynamicGlobalIlluminationMethod::Lumen;*/
 
 	PortalCamera->bEnableClipPlane = true;
 	PortalCamera->bCaptureEveryFrame = false;
@@ -200,8 +185,7 @@ void APortal::InitPortalCamera()
 	PortalCamera->CompositeMode = SCCM_Composite;
 
 	PortalCamera->bUseCustomProjectionMatrix = true;
-
-
+	
 	PortalCamera->TextureTarget = nullptr;
 }
 
@@ -371,27 +355,33 @@ void APortal::UpdateCapture(float DeltaTime)
 	// Get the Projection Matrix
 	const auto PlayerCameraManager =
 		GWorld->GetFirstPlayerController()->PlayerCameraManager;
-	
-	{
-		// Set camera projection matrix of the portal camera.
-		FMatrix UnusedViewMatrix;
-		FMatrix ProjectionMatrix;
-		FMatrix UnusedViewProjectionMatrix;
-		
-		UGameplayStatics::GetViewProjectionMatrix(
-			PlayerCameraManager->GetCameraCacheView(),
-			UnusedViewMatrix,
-			ProjectionMatrix,
-			UnusedViewProjectionMatrix);
 
-		PortalCamera->CustomProjectionMatrix = ProjectionMatrix;
+	// Set camera projection matrix of the portal camera.
+	FMatrix UnusedViewMatrix;
+	FMatrix ProjectionMatrix;
+	FMatrix ViewProjectionMatrix;
+	
+	UGameplayStatics::GetViewProjectionMatrix(
+		PlayerCameraManager->GetCameraCacheView(),
+		UnusedViewMatrix,
+		ProjectionMatrix,
+		ViewProjectionMatrix);
+
+	PortalCamera->CustomProjectionMatrix = ProjectionMatrix;
+
+	// Cannot see the portal.
+	if (UPortalClipLocation::CannotSeePortal(ViewProjectionMatrix,
+		this))
+	{
+		return;
 	}
 
 	auto PlayerCameraLocation = 
 		PlayerCameraManager->GetCameraLocation();
 	auto PlayerCameraRotation = 
 		PlayerCameraManager->GetCameraRotation().Quaternion();
-	
+
+
 	CapturePortalSceneRecur(
 		DeltaTime,
 		PlayerCameraLocation,
@@ -513,7 +503,7 @@ void APortal::CapturePortalSceneRecur(
 	PortalCamera->ClipPlaneNormal = LinkedPortal->GetActorForwardVector();
 	
 	PortalCamera->CaptureScene();
-
+	
 	// If the last recursion, we should set back the material.
 	if (RecursionRemaining == 1)
 	{
@@ -559,7 +549,7 @@ void APortal::CapturePortalSceneRecur(
 		PortalClipLocation->UpdateBackPortalClipLocation(
 			ViewProjectionMatrix,
 			this);
-
+		
 		ENQUEUE_RENDER_COMMAND(PortalTextureCopy)(
 			[this](FRHICommandListImmediate& RHICmdList)
 			{
@@ -574,6 +564,7 @@ void APortal::CapturePortalSceneRecur(
 					DestTexture,
 					Info);
 			});
+
 		return;
 	}
 
@@ -745,7 +736,7 @@ void APortal::SetPortalRenderTarget(TObjectPtr<UTextureRenderTarget2D> NewTextur
 	PortalCamera->TextureTarget = PortalTexture;
 }
 
-void APortal::SetPortalMaterial(TObjectPtr<UMaterial> NewMaterial)
+void APortal::SetPortalPlaneMaterial(int Index, TObjectPtr<UMaterialInterface> NewMaterial)
 {
 	if (!NewMaterial)
 	{
@@ -754,8 +745,19 @@ void APortal::SetPortalMaterial(TObjectPtr<UMaterial> NewMaterial)
 
 	PortalMaterial = NewMaterial;
 
-	PortalPlane->SetMaterial(0, NewMaterial);
-	PortalInner->SetMaterial(0, NewMaterial);
+	PortalPlane->SetMaterial(Index, NewMaterial);
+}
+
+void APortal::SetPortalInnerMaterial(int Index, TObjectPtr<UMaterialInterface> NewMaterial)
+{
+	if (!NewMaterial)
+	{
+		return;
+	}
+
+	PortalMaterial = NewMaterial;
+	
+	PortalInner->SetMaterial(Index, NewMaterial);
 }
 
 void APortal::SetPortalRecurRenderTarget(TObjectPtr<UTextureRenderTarget2D> NewTexture)
@@ -781,7 +783,7 @@ void APortal::SetPortalRecurRenderTarget(TObjectPtr<UTextureRenderTarget2D> NewT
 	PortalRecurTexture->UpdateResource();
 }
 
-void APortal::SetPortalRecurMaterial(TObjectPtr<UMaterial> NewMaterial)
+void APortal::SetPortalRecurMaterial(TObjectPtr<UMaterialInterface> NewMaterial)
 {
 	PortalRecurMaterial = NewMaterial;
 }

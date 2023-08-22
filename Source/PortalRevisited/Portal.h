@@ -91,9 +91,10 @@ public:
 	void LinkPortals(TObjectPtr<APortal> NewTarget);
 	void RegisterPortalGun(TObjectPtr<UPortalGun> NewPortalGun);
 	void SetPortalRenderTarget(TObjectPtr<UTextureRenderTarget2D> NewTexture);
-	void SetPortalMaterial(TObjectPtr<UMaterial> NewMaterial);
+	void SetPortalPlaneMaterial(int Index, TObjectPtr<UMaterialInterface> NewMaterial);
+	void SetPortalInnerMaterial(int Index, TObjectPtr<UMaterialInterface> NewMaterial);
 	void SetPortalRecurRenderTarget(TObjectPtr<UTextureRenderTarget2D> NewTexture);
-	void SetPortalRecurMaterial(TObjectPtr<UMaterial> NewMaterial);
+	void SetPortalRecurMaterial(TObjectPtr<UMaterialInterface> NewMaterial);
 	void SetCharacter(TObjectPtr<APortalRevisitedCharacter> NewCharacter);
 	
 	// Called every frame
@@ -191,7 +192,7 @@ private:
 	TObjectPtr<UPortalGun> PortalGun;
 
 	TObjectPtr<UTextureRenderTarget2D> PortalRecurTexture;
-	TObjectPtr<UMaterial> PortalMaterial;
+	TObjectPtr<UMaterialInterface> PortalMaterial;
 	TObjectPtr<UMaterialInterface> PortalRecurMaterial;
 	
 	TObjectPtr<UPortalClipLocation> PortalClipLocation;

@@ -21,6 +21,7 @@ public:
 	~UPortalClipLocation();
 	void UpdateBackPortalClipLocation(const FMatrix& Matrix, APortal* PortalToDraw);
 	void UpdateFrontPortalClipLocation(const FMatrix& ViewProjectionMatrix, APortal* PortalToDraw);
+	static bool CannotSeePortal(const FMatrix& ViewProjectionMatrix, APortal* PortalToDraw);
 
 private:
 	TObjectPtr<UMaterialParameterCollection> MatParamCollection;

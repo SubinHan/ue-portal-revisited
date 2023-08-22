@@ -28,6 +28,10 @@ public:
 	UPortalGun();
 	void LinkPortals();
 
+	/** Projectile class to spawn */
+	UPROPERTY(EditAnywhere, Category=Projectile)
+	TSubclassOf<class APortalRevisitedProjectile> ProjectileClass;
+
 	/** Sound to play each time we fire blue portal*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Gameplay)
 	TObjectPtr<USoundBase> BlueFireSound;
@@ -52,12 +56,14 @@ public:
 
 	TObjectPtr<UTextureRenderTarget2D> BluePortalRenderTarget;
 	TObjectPtr<UTextureRenderTarget2D> OrangePortalRenderTarget;
-	TObjectPtr<UMaterial> BluePortalMaterial;
-	TObjectPtr<UMaterial> OrangePortalMaterial;
+	TObjectPtr<UMaterialInterface> BluePortalMaterial;
+	TObjectPtr<UMaterialInterface> OrangePortalMaterial;
+	TObjectPtr<UMaterialInterface> BluePortalInnerMaterial;
+	TObjectPtr<UMaterialInterface> OrangePortalInnerMaterial;
 	TObjectPtr<UTextureRenderTarget2D> BluePortalRecurRenderTarget;
 	TObjectPtr<UTextureRenderTarget2D> OrangePortalRecurRenderTarget;
-	TObjectPtr<UMaterial> BluePortalRecurMaterial;
-	TObjectPtr<UMaterial> OrangePortalRecurMaterial;
+	TObjectPtr<UMaterialInterface> BluePortalRecurMaterial;
+	TObjectPtr<UMaterialInterface> OrangePortalRecurMaterial;
 
 	/** MappingContext */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
@@ -102,6 +108,7 @@ public:
 
 private:
 	void FirePortal(TObjectPtr<APortal> TargetPortal);
+	void FirePortalProjectile(const FVector& ImpactPoint, bool CanCreatePortal);
 	/**
 	 * @brief 
 	 * @param The actor like walls 
