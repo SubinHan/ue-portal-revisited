@@ -51,6 +51,19 @@ void OneMinus(double& Value)
 	Value = 1.0 - Value;
 }
 
+void ClampZeroToOne(UE::Math::TVector4<double>& ClipLeftUp, UE::Math::TVector4<double>& ClipLeftDown, UE::Math::TVector4<double>& ClipRightUp, UE::Math::TVector4<double>& ClipRightDown)
+{
+	ClipLeftUp.X = FMath::Clamp(ClipLeftUp.X, 0.0f, 1.0f);
+	ClipLeftDown.X = FMath::Clamp(ClipLeftDown.X, 0.0f, 1.0f);
+	ClipRightUp.X = FMath::Clamp(ClipRightUp.X, 0.0f, 1.0f);
+	ClipRightDown.X = FMath::Clamp(ClipRightDown.X, 0.0f, 1.0f);
+	
+	ClipLeftUp.Y = FMath::Clamp(ClipLeftUp.Y, 0.0f, 1.0f);
+	ClipLeftDown.Y = FMath::Clamp(ClipLeftDown.Y, 0.0f, 1.0f);
+	ClipRightUp.Y = FMath::Clamp(ClipRightUp.Y, 0.0f, 1.0f);
+	ClipRightDown.Y = FMath::Clamp(ClipRightDown.Y, 0.0f, 1.0f);
+}
+
 void CalculateClipSpaceLocation(const FMatrix& ViewProjectionMatrix, APortal* PortalToDraw, UE::Math::TVector4<double>& ClipLeftUp, UE::Math::TVector4<double>& ClipLeftDown, UE::Math::TVector4<double>& ClipRightUp, UE::Math::TVector4<double>& ClipRightDown)
 {
 	const auto PortalCenter = 
@@ -106,16 +119,8 @@ void CalculateClipSpaceLocation(const FMatrix& ViewProjectionMatrix, APortal* Po
 	OneMinus(ClipLeftDown.Y);
 	OneMinus(ClipRightUp.Y);
 	OneMinus(ClipRightDown.Y);
-
-	ClipLeftUp.X = FMath::Clamp(ClipLeftUp.X, 0.0f, 1.0f);
-	ClipLeftDown.X = FMath::Clamp(ClipLeftDown.X, 0.0f, 1.0f);
-	ClipRightUp.X = FMath::Clamp(ClipRightUp.X, 0.0f, 1.0f);
-	ClipRightDown.X = FMath::Clamp(ClipRightDown.X, 0.0f, 1.0f);
 	
-	ClipLeftUp.Y = FMath::Clamp(ClipLeftUp.Y, 0.0f, 1.0f);
-	ClipLeftDown.Y = FMath::Clamp(ClipLeftDown.Y, 0.0f, 1.0f);
-	ClipRightUp.Y = FMath::Clamp(ClipRightUp.Y, 0.0f, 1.0f);
-	ClipRightDown.Y = FMath::Clamp(ClipRightDown.Y, 0.0f, 1.0f);
+	ClampZeroToOne(ClipLeftUp, ClipLeftDown, ClipRightUp, ClipRightDown);
 }
 
 void UPortalClipLocation::UpdateBackPortalClipLocation(
@@ -148,7 +153,7 @@ void UPortalClipLocation::UpdateBackPortalClipLocation(
 	
 	const auto RightDownParameterName =
 		PARAMETER_NAME_BACK + PARAMETER_NAME_RIGHTDOWN;
-	
+
 	MatParamCollectionInstance->SetVectorParameterValue(
 		FName(LeftUpParameterName),
 		ClipLeftUp);
